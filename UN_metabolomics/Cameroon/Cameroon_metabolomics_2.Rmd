@@ -1,0 +1,1016 @@
+---
+title: "Cameroon Project"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(stringr)
+library(xlsx)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(gplots)
+library(RColorBrewer)
+library(ggrepel)
+library(ggfortify)
+library(reshape2)
+library(caret)
+library(randomForest)
+library(mlbench)
+library(rattle)
+library(ropls)
+library(factoextra)
+library(umap)
+library(UpSetR)
+
+opts_chunk$set(echo = TRUE)
+options(bitmapType="cairo")
+```
+
+```{r}
+source("src/Cameroon/usefull_functions.R")
+source("src/Cameroon/ML.R")
+```
+# I) Preprocessing / Parsing files
+
+### clinical data
+```{r}
+clinical_data <- read.xlsx("data/Cameroon/clinical_data/Final_Database_13012020.xlsx", 1)
+```
+
+```{r}
+name_ana <- "Cameroon"
+metabolon_condition <- c(rep("HC", 24), rep("ART", 24))
+```
+### parse metabolon data
+```{r}
+met_data <- read.xlsx("data/Cameroon/Metabolon/Cameroon_VolNormImpData.xlsx",1, stringsAsFactors=FALSE)
+ID <- colnames(met_data)[-c(1:2)]
+condition <- as.character(met_data[1,-c(1:2)])
+
+table_ID <- data.frame(ID, condition)
+table_ID <- table_ID[-c(1,2),]
+count_HC <- 1
+count_ART <- 1
+  
+for (i in 1:nrow(table_ID)){
+  table_ID[i,3] <- ifelse(table_ID[i,2] == "Healthy-C", paste0("HC_", count_HC), paste0("ART_", count_ART))
+  count_HC <- ifelse(table_ID[i,2] == "Healthy-C",count_HC +1, count_HC +0)
+  count_ART <- ifelse(table_ID[i,2] != "Healthy-C",count_ART +1,count_ART +0)
+}
+
+informationInfo_metabolites <- met_data[,1:3]
+
+conversion_HMDB <- met_data[,3:4]
+
+conversion_id <- met_data[,1:5]
+
+write.csv(informationInfo_metabolites, "processing/Cameroon/Cameroon_metabolites_info.csv")
+
+write.csv(conversion_id, "processing/Cameroon/Cameroon_ids.csv")
+```
+
+```{r}
+data_antiviral <- met_data[met_data$NA..1 == "Drug - Antiviral", ]
+data_antiviral$CLIENT.IDENTIFIER<- NULL
+rownames(data_antiviral) <- data_antiviral$NA..2
+data_antiviral$NA..2 <- NULL
+data_antiviral$NA. <- NULL
+data_antiviral$NA..1 <- NULL
+
+colnames(data_antiviral) <- table_ID$V3
+
+data_antiviral <- select(data_antiviral, contains("HC"), contains("ART"))
+
+write.csv(rownames(data_antiviral), "processing/Cameroon/antiviral_drugs.csv")
+```
+
+```{r}
+#met_data <- met_data[!met_data$NA..1 == "Drug - Antiviral", ]
+```
+
+```{r}
+clinical_data$Study.id <- gsub("-CM-", ".CM.", clinical_data$Study.id)
+```
+
+```{r}
+clinical_data$ID <- clinical_data$Study.id
+clinical_data <- merge(table_ID, clinical_data, by = "ID", all.x = TRUE)
+```
+
+```{r}
+met_data <- met_data[-1,]
+met_data$CLIENT.IDENTIFIER<- NULL
+rownames(met_data) <- met_data$NA..2
+metabolites <- met_data$NA..2
+met_data$NA..2 <- NULL
+met_data$NA. <- NULL
+met_data$NA..1 <- NULL
+```
+
+```{r}
+colnames(met_data) <- table_ID$V3
+
+met_data <- select(met_data, contains("HC"), contains("ART"))
+```
+
+/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_data_with_clinical_data.csv
+
+```{r}
+write.csv(met_data, "processing/Cameroon/filter_metabolic_data.csv")
+```
+
+
+## convert to numeric
+```{r}
+met_data_2 <- mutate_all(met_data, function(x) as.numeric(as.character(x)))
+rownames(met_data_2) <- metabolites
+```
+
+```{r}
+names(clinical_data)
+```
+
+```{r}
+met_data_3 <- data.frame(t(met_data_2))
+met_data_3$V3 <- rownames(met_data_3)
+
+met_data_3 <- merge(met_data_3, clinical_data, by = "V3")
+
+met_data <- met_data_3[,1:842]
+rownames(met_data) <- met_data$V3
+met_data$V3 <- NULL
+age <- met_data_3[,847]
+sex <- met_data_3[,848]
+BMI <- met_data_3[,863]
+hiv_treatment <-met_data_3[,863]
+condition <- met_data_3[,844]
+```
+
+```{r}
+write.csv(met_data_3, "processing/Cameroon/Cameroon_data_with_clinical_data.csv")
+```
+
+```{r}
+convert_met <- cbind (metabolites, names(met_data_3)[2:842])
+names(convert_met)[2] <- "metabolites_2"
+write.csv(convert_met, "processing/Cameroon/Cameroon_conversion_table_metabolomics.csv")
+```
+
+```{r}
+met_data <- data.frame(t(met_data))
+met_data <- select(met_data, contains("HC"), contains("ART"))
+met_data <- data.frame(t(met_data))
+```
+
+### check for missing values
+```{r}
+counts <- 1:nrow(met_data) # create vector of appropriate length
+for(i in 1:nrow(met_data)){
+    # TRUE will be coerced to 1 for the summing
+    counts[i] <- sum(is.na(met_data[i,]))
+}
+table(counts) # create the summary
+```
+
+```{r}
+write.csv(clinical_data, "processing/Cameroon/Cameroon_clinical_data_new_id.csv")
+
+write.csv(table(counts), "processing/Cameroon/Cameroon_metabolon_missing_values.csv")
+```
+
+### check distribution
+```{r}
+data <-as.matrix(met_data_2)
+hist(data, prob=T)
+curve(dnorm(x,mean(data),sd(data)),add=T,col="red")
+save_figure(data, "Distribution_olink", 10, 10)
+```
+
+```{r}
+library(nortest)
+ad.test(data)
+```
+
+
+met_da
+### PCA
+
+```{r}
+metabolon_condition <- c(rep("HC", 24), rep("ART", 24))
+```
+
+## UMAP all metabolites
+```{r}
+met.data = as.matrix(met_data)
+met.labels = metabolon_condition
+```
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data, layout)
+colnames(data_umap)[842:843] <- c("UMAP1", "UMAP2")
+
+data_umap <-data.frame(data_umap)
+```
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition)+ geom_point(size = 5, alpha = 0.9, shape = 22, aes(fill = factor(metabolon_condition), color = factor(metabolon_condition)))+
+  stat_ellipse(aes(x=UMAP1, y=UMAP2,color=Condition), linetype = 2)+ scale_color_manual(name = "Condition", values = c("#0080FF","#A2C0D9"))+ scale_fill_manual(name = "Condition", values=c("#0080FF","#A2C0D9"))
+
+ggsave("results/Cameroon/figures/umap_man_whole_metabolites_cameroon.pdf")
+```
+
+```{r}
+#' Run Man withney test between 2 conditions
+#'
+#' @param file 
+#' @param n_c1 number of samples in condition 1
+#' @param n_c2 number of samples in condition 2
+#' @param c1 name condition 1
+#' @param c2 name condition 2
+my_man_whithney <- function(data, n_c1, n_c2, c1, c2){
+  test_table <- data.frame(Accession = NA, Log2FC = NA, pvalue = NA, FDR = NA, Significance = NA)
+  n_c2_start <- n_c1 +1
+  n_c2_stop <- n_c1 + n_c2
+  print(n_c2_start)
+  print(n_c2_stop)
+  print(names(data)[1:n_c1])
+  print(names(data)[n_c2_start:n_c2_stop])
+  for (i in 1:nrow(data)){
+    a <- as.matrix(data[i, 1:n_c1])
+    b <- as.matrix(data[i, n_c2_start:n_c2_stop])
+    ts <- wilcox.test(a, b)
+    test_table[i, 3] <- ts$p.value
+    test_table[i, 2] <- log2((sum(b)/n_c2)/(sum(a)/n_c1))
+    test_table[i, 1] <- rownames(data)[i]
+  }
+  #
+  test_table$FDR <- p.adjust(test_table$pvalue, method = "fdr")
+  test_table$Significance <- ifelse(test_table$pvalue < 0.1, "SIGN", "NS")
+  name <- paste0(c1, "_vs_", c2, "_Man_whitney_test_results")
+  print(name)
+  save_file_excel(test_table, name, "results/Cameroon/Man_whithney/")
+  save_file_csv(test_table, name, "results/Cameroon/Man_whithney/")
+  test_table <- test_table[complete.cases(test_table), ]
+  test_table_2 <- test_table[test_table$FDR < 0.1, ]
+  print(nrow(test_table_2))
+  test_table_2$Significance <- ifelse(test_table_2$Log2FC < 0, paste0("downregulated in ", c2), paste0("upregulated in ", c2))
+  name <- paste0(c1, "_vs_", c2, "_Man_whitney_test_results_filtered")
+  save_file_csv(test_table_2, name, "results/Cameroon/Man_whithney/")
+  save_file_excel(test_table_2, name, "results/Cameroon/Man_whithney/")
+  return(test_table)
+}
+```
+
+```{r}
+data_test <-data.frame(t(met_data))
+```
+
+```{r}
+names(data_test)
+```
+
+```{r}
+data_test <- select(data_test, starts_with("HC"), starts_with("ART"))
+```
+
+```{r}
+HC_ARTcomp_test <- my_man_whithney(data_test, 24, 24, "HC", "ART")
+```
+
+```{r}
+met_data_2 <- select(met_data_2, starts_with("HC"), starts_with("ART"))
+```
+
+```{r}
+HC_ARTcomp_test_3 <- my_man_whithney(met_data_2, 24, 24, "HC", "ART")
+```
+
+```{r}
+results_man_withney <- HC_ARTcomp_test_3
+results_man_withney <- results_man_withney[results_man_withney$pval < 0.05,]
+```
+
+```{r}
+HC_ARTcomp_test_2 <- HC_ARTcomp_test[HC_ARTcomp_test$pval < 0.05,]
+```
+
+```{r}
+data_man <- met_data_3[,colnames(met_data_3) %in% HC_ARTcomp_test_2$Accession]
+```
+
+```{r}
+met.data = as.matrix(data_man)
+met.labels = metabolon_condition
+```
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data, layout)
+colnames(data_umap)[43:44] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition)+ geom_point(size = 5, alpha = 0.9, shape = 22, aes(fill = factor(metabolon_condition), color = factor(metabolon_condition)))+
+  stat_ellipse(aes(x=UMAP1, y=UMAP2,color=Condition), linetype = 2)+ scale_color_manual(name = "Condition", values = c("#0080FF","#A2C0D9"))+ scale_fill_manual(name = "Condition", values=c("#0080FF","#A2C0D9"))
+
+path_fig <- paste0("results/Cameroon/figures/umap_man_withney_metabolites_cameroon.svg")
+dev.copy(svg,path_fig, width = 10, height = 8)
+dev.off()
+
+
+```
+```{r}
+names(HC_ARTcomp_test_3)[2] <- "logFC"
+```
+
+
+```{r}
+top_genes <- HC_ARTcomp_test_3[(HC_ARTcomp_test_3$logFC > 2.2) | (HC_ARTcomp_test_3$logFC < - 2.2), ]
+top_genes <- top_genes[complete.cases(top_genes),]
+top_genes <- top_genes[(top_genes$FDR < 0.1), ]
+
+dim(top_genes)
+# remove label for proteins with  - 1 < logFoldChange < 1
+for (nb_row in 1:nrow(HC_ARTcomp_test_3)){
+  if (HC_ARTcomp_test_3[nb_row, 1] %in% c(top_genes$Accession, "glutamate")){
+    }else{
+      HC_ARTcomp_test_3[nb_row, 1] <- NA
+  }
+}
+```
+
+```{r}
+#HC_ARTcomp_test_3$Accession[!is.na(HC_ARTcomp_test_3$Accession)][1] <- "5α-androstan-3α,17β-diol monosulfate (1)"
+HC_ARTcomp_test_3$Accession[!is.na(HC_ARTcomp_test_3$Accession)][1] <- "5α-androstan-3β,17β-diol disulfate"
+HC_ARTcomp_test_3$Accession[!is.na(HC_ARTcomp_test_3$Accession)][2] <- "5α-pregnan-3β,20α-diol disulfate"
+```
+logFC
+
+```{r}
+HC_ARTcomp_test_3 <-HC_ARTcomp_test_3[HC_ARTcomp_test_3$logFC > -8,]
+```
+
+
+# volcano plot
+```{r}
+ggplot(HC_ARTcomp_test_3, aes(x=logFC, y=-log10(FDR))) + 
+  geom_point(data=subset(HC_ARTcomp_test_3, FDR<.1 & logFC < 0),aes(x=logFC,y=-log10(FDR),
+  size=abs(logFC),color=logFC))+scale_color_gradient(high = "#4ca64c", low = "#003300") + 
+  geom_point(data=subset(HC_ARTcomp_test_3, FDR<.1 & logFC > 0),aes(x=logFC,y=-log10(FDR),
+  size=abs(logFC),fill=logFC),shape=21,color="#ff5d5d") + 
+  scale_fill_gradient(low = "#ff4c4c", high = "#7f0000")+ 
+  geom_point(data=subset(HC_ARTcomp_test_3, FDR>=.1),aes(x=logFC,y=-log10(FDR),size=abs(logFC)),
+             color="grey") +
+  theme_bw()+
+  geom_label_repel(aes(label = Accession),size=4,label.size = 0.1,box.padding=0.5) + 
+  theme(legend.title=element_text(size=8),legend.text=element_text(size=6),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=12),axis.title.x=element_text(size=12),
+        axis.text.y=element_text(size=7),axis.text.x=element_text(size=7)) +
+  labs(x="Log2 Fold Change",y="-log10 (Adj.pvalue)")
+
+path_fig <- paste0("results/", name_ana, "/figures/Cameroon_man_withney_volcano_plot.svg")
+dev.copy(svg,path_fig, width = 10, height = 4)
+dev.off()
+
+```
+
+```{r}
+top_genes <- HC_ARTcomp_test_3[(HC_ARTcomp_test_3$logFC > 2) | (HC_ARTcomp_test_3$logFC < - 2), ]
+top_genes <- top_genes[complete.cases(top_genes),]
+top_genes <- top_genes[(top_genes$FDR < 0.1), ]
+
+dim(top_genes)
+# remove label for proteins with  - 1 < logFoldChange < 1
+for (nb_row in 1:nrow(HC_ARTcomp_test_3)){
+  if (HC_ARTcomp_test_3[nb_row, 1] %in% top_genes$Accession){
+    }else{
+      HC_ARTcomp_test_3[nb_row, 1] <- NA
+  }
+}
+```
+
+
+```{r}
+tt <- HC_ARTcomp_test_3
+
+tt$color <- NA
+
+for (i in 1:nrow(tt)){
+  if(tt[i,2] > 1 & tt[i,4] < 0.1){
+    tt[i, 6] <- "up_regulated"
+  }
+  if(tt[i,2] < -1 & tt[i,4] < 0.1){
+    tt[i, 6] <- "down_regulated"
+  }
+  if(tt[i,4] > 0.1){
+    tt[i, 6] <- "NS"
+  }
+}
+```
+
+```{r}
+tt$color[is.na(tt$color)] <- "significant"
+```
+
+```{r}
+tt <- tt[tt$logFC > -8,]
+which(tt$Accession == "5α-pregnan-3β,20α-diol disulfate")
+which(tt$Accession == "5α-androstan-3β,17β-diol disulfate")
+which(tt$Accession == "5α-androstan-3α,17β-diol monosulfate (1)")
+```
+```{r}
+tt[247, 1] <- "5α-androstan-3α,17β-diol monosulfate (1)"
+tt[249, 1] <- "5α-androstan-3β,17β-diol disulfate"
+tt[251, 1] <- "5α-pregnan-3β,20α-diol disulfate"
+```
+
+## volcano plot ggplot
+```{r}
+# creating color palette
+cols <- c("up_regulated" = "#cc0000", "down_regulated" = "#009933", "NS" = "darkgrey", "significant" = "#FFD700")
+
+# Make a basic ggplot2 object
+vol <- ggplot(tt, aes(x = logFC, y = -log10(FDR), color = color))+ 
+  geom_point(size=2, alpha = 1, na.rm = T)+   
+  scale_colour_manual(values = cols)+
+  geom_hline(yintercept = 1, colour="black", linetype="dashed") + geom_vline(xintercept = 1, colour="black", linetype="dashed") + geom_vline(xintercept = -1, colour="black", linetype="dashed")+ theme_bw()+
+  geom_label_repel(aes(label = Accession),size=2,label.size = 0.1,box.padding=0.5, colour = "black") + 
+  theme(legend.title=element_text(size=8),legend.text=element_text(size=6),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=9),axis.title.x=element_text(size=9),
+        axis.text.y=element_text(size=7),axis.text.x=element_text(size=7)) +
+  labs(x="Log2 Fold Change",y="-log10 (Adj.pvalue)",title= name_ana)
+
+path_fig <- paste0("results/Cameroon/figures/", name_ana, "_volcano_plot.svg")
+#ggsave(path_fig)
+```
+
+```{r}
+man_withney_data <- HC_ARTcomp_test[HC_ARTcomp_test$pvalue < 0.05,]
+```
+
+```{r}
+conversion <- read.csv("processing/Cameroon/Cameroon_conversion_table_metabolomics.csv")
+```
+
+```{r}
+names(conversion)
+```
+
+```{r}
+convert_HMDB <- conversion_HMDB
+```
+
+```{r}
+names(man_withney_data)[1] <- c("X.1")
+names(convert_HMDB)[1:2] <- c("X.1","HMDB")
+```
+
+```{r}
+man_withney_data_IPA <- merge(man_withney_data, convert_HMDB, by = "X.1", all.x = TRUE)
+```
+
+```{r}
+names(man_withney_data_IPA)
+```
+
+```{r}
+man_withney_data_IPA <- select(man_withney_data_IPA, HMDB, Log2FC, pvalue)
+```
+
+```{r}
+man_withney_data_IPA <- man_withney_data_IPA[complete.cases(man_withney_data_IPA),]
+write.xlsx(man_withney_data_IPA, "results/Cameroon/IPA/man_withney_ipa_pvalue_0.05.xlsx")
+```
+
+
+
+
+
+### RF
+
+```{r}
+source("src/Cameroon/ML.R")
+```
+
+```{r}
+data_rf <- data.frame(t(met_data))
+```
+
+```{r}
+metabolites <- rownames(met_data)
+data_HC_ART <- data.frame(Condition = metabolon_condition, met_data)
+#colnames(data_HC_ART)[-1] <- metabolites
+#names(data_HC_ART) <- make.names(names(data_HC_ART))
+```
+
+```{r}
+RFModel1 = randomForest(Condition~., data = data_HC_ART, ntree=1000, importance = TRUE)
+```
+
+```{r}
+library(caret)
+library(randomForest)
+```
+
+```{r}
+data <- feature_select_Boruta(data_HC_ART, "HC_ART_Metabolon")
+```
+
+```{r}
+# cross-validation
+# mtry tunning
+# number of trees tunning
+
+# tune mtry parameter : check results for value of mtry between 1 and 15
+set.seed(1)
+tunegrid <- expand.grid(.mtry = (1:15)) 
+
+# 10 -Fold cross validation
+control <- trainControl(method='repeatedcv', 
+                        number=10, 
+                        repeats=3,
+                        savePredictions = TRUE,
+                        ## Estimate class probabilities
+                        classProbs = TRUE,
+                        ## Evaluate performance using 
+                        ## the following function
+                        summaryFunction = twoClassSummary)
+
+
+set.seed(123)
+#Number randomely variable selected is mtry
+
+rf_default <- train(as.factor(Condition)~., 
+                    data=data, 
+                    method='rf', 
+                    metric = 'ROC',
+                    tuneGrid=tunegrid, 
+                    trControl=control, importance = TRUE, ntree = 1000
+                    )
+
+# keep final model
+rf <- rf_default$finalModel
+
+rf
+# save final model
+file_name <- paste0("results/Cameroon/ML/model_rf_2_", name_ana)
+saveRDS(rf, file_name)
+```
+
+```{r}
+library(randomForest)
+```
+/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/ML/model_rf_2_Cameroon
+```{r}
+rf <- readRDS("results/Cameroon/ML/model_rf_2_Cameroon")
+rf
+```
+
+```{r}
+imp <- randomForest::importance(rf)
+```
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+imp <-data.frame(imp)
+names <- rownames(imp)
+imp <- data.frame(MeanDecreaseAccuracy = imp$MeanDecreaseAccuracy, variable = names)
+var_importance <- arrange(imp, desc(MeanDecreaseAccuracy))
+#var_importance$variable <- factor(var_importance$variable, levels=var_importance$variable)
+
+var_importance <- arrange(var_importance, MeanDecreaseAccuracy)
+```
+
+```{r}
+var_importance <- var_importance[!is.na(var_importance$variable), ]
+
+features_rf <- var_importance
+```
+
+```{r}
+names(conversion)[3] <- "Accession"
+```
+
+```{r}
+dge_table <- merge(HC_ARTcomp_test, conversion, by = "Accession")
+```
+```{r}
+names(dge_table)[1] <- "variable"
+```
+```{r}
+var_importance_2 <- merge(var_importance, dge_table, by = "variable")
+```
+# trans
+
+```{r}
+#var_importance$variable <-gsub("`","",var_importance$variable)
+```
+
+```{r}
+#var_importance[9, 2] <- "bilirubin (Z,Z)"
+#var_importance[26, 2] <- "glyco-beta-muricholate**"
+```
+
+
+```{r}
+#var_importance <- merge(var_importance, dge_table, by = "variable", all.x = TRUE)
+var_importance_2$variable <- as.factor(as.character(var_importance_2$metabolites))
+var_importance_2$significance <- ifelse(var_importance_2$Log2FC > 0, "up-regulated", "down-regulated")
+
+var_importance_2[is.na(var_importance_2)] <- "NS"
+
+var_importance_2$significance <- as.factor(var_importance_2$significance)
+
+var_importance_2 <- arrange(var_importance_2, MeanDecreaseAccuracy)
+```
+
+
+
+
+```{r}
+position <- var_importance_2$variable
+```
+
+```{r}
+path_fig <- paste0("results/", name_ana, "/figures/", name_ana,
+                   "_top_variable_importance.pdf")
+
+theme_set(theme_classic())
+ggplot(var_importance_2, aes(x=metabolites, y=MeanDecreaseAccuracy, color = Significance)) + geom_point(aes(colour=significance, fill=significance), size=3, shape = 21, color = "black")+ 
+  scale_fill_manual(values=c('#0066cc','#ff0000'))+ geom_segment(aes(x=variable, 
+                     xend=variable, 
+                     y=min(MeanDecreaseAccuracy), 
+                     yend=max(MeanDecreaseAccuracy)), 
+                 linetype="dashed", 
+                 size=0.1, color="black")+ scale_x_discrete(limits = position) +   # Draw dashed lines
+  labs(title="Variable importance") +  
+  coord_flip()
+ggsave(path_fig, width = 10)
+```
+
+```{r}
+selectedIndices <- rf_default$pred$mtry == 1
+```
+
+```{r}
+library(plotROC)
+```
+
+```{r}
+g <- ggplot(rf_default$pred[selectedIndices, ], aes(m=HC, d=factor(obs, levels = c("HC", "ART")))) + geom_roc(n.cuts=0) + coord_equal() + style_roc(theme = theme_grey)
+g <- g + annotate("text", x = .75, y = .25, label = paste("AUC =", round(calc_auc(g)$AUC, 2)))
+
+ggsave("results/Cameroon/ML/ROC_hd4_10_cross_validate.pdf")
+```
+
+
+```{r}
+table <- rf_default$pred[selectedIndices, ][,1:2]
+```
+
+```{r}
+table <- as.data.frame(table(table))
+
+table$Freq <- c(24, 0, 1, 23)
+```
+
+```{r}
+ggplotConfusionMatrix <- function(m){
+  p <-
+    ggplot(data = m ,
+           aes(x = obs, y = pred)) +
+    geom_tile(aes(fill = log(Freq)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "steelblue", limits=c(0, 10)) +
+    geom_text(aes(x = obs, y = pred, label = Freq)) +
+    theme(legend.position = "none") 
+  ggsave("results/Cameroon/ML/confusion_matrix_Cameroon.pdf")
+  return(p)
+}
+```
+
+```{r}
+ggplotConfusionMatrix(table)
+```
+
+```{r}
+results_rf <- var_importance_2
+```
+
+
+```{r}
+met_data_2$variable <-rownames(met_data_2)
+```
+
+```{r}
+#levels(var_importance$variable) <- c(levels(var_importance$variable), "bilirubin")
+#levels(var_importance$variable) <- c(levels(var_importance$variable), "glyco-beta-muricholate")
+#var_importance[9, 1] <- "bilirubin"
+#var_importance[26, 1] <- "glyco-beta-muricholate"
+```
+
+# PLS-DA
+
+```{r}
+metabolites <- rownames(met_data_2)
+met_data_2$variable <- NULL
+x <- data.frame(t(met_data_2))
+
+
+y <- metabolon_condition
+```
+
+```{r}
+# apply it
+#x_scaled <- scale(x)
+
+#2. unit-variance scalling
+
+path_fig <- paste0("results/Cameroon/figures/", name_ana, 
+                   "_PLS-DA_mets_nomets.pdf")
+pdf(path_fig)
+met.plsda <- opls(x, y)
+dev.off()
+
+vipVn <- data.frame(getVipVn(met.plsda))
+vipVn$Accession <- rownames(vipVn)
+vipVn <- merge(vipVn, conversion, by = "Accession")
+```
+
+## improve opls-da plot
+```{r}
+dir.create(paste0("processing/", name_ana))
+path_fig <- paste0("results/Cameroon/figures/", name_ana, 
+                   "_PLS-DA_mets_nomets_PCA.pdf")
+pdf(path_fig)
+plot(met.plsda, typeVc = "x-score")
+dev.off()
+```
+
+```{r}
+vipVn <- arrange(vipVn, desc(getVipVn.met.plsda.))
+names(vipVn)
+vipVn <- vipVn[1:50,]
+```
+
+
+```{r}
+pdf(paste0("results/Cameroon/figures/Vip_PLS-DA.pdf"), width = 30)
+p<-ggplot(data=vipVn, aes(x=reorder(variable, -getVipVn.met.plsda.), y=getVipVn.met.plsda.)) + theme_classic()+
+  geom_bar(stat="identity", fill="#d5e1df", size = 0.01)+ theme(text = element_text(size=4), axis.text.x = element_text(angle = 75, hjust = 1))+ labs(y="VipVn", x = "Metabolites")+ geom_hline(yintercept=1, linetype="dashed", color = "red")
+p
+dev.off()
+```
+
+```{r}
+pdf("results/Cameroon/figures/PLS-DA_cameroon_improved.pdf")
+plot(met.plsda, typeVc = "x-score")
+dev.off()
+```
+
+```{r}
+vipVn <- arrange(vipVn, desc(getVipVn.met.plsda.))
+
+vipVn <- vipVn[1:30,]
+```
+
+```{r}
+results_PLS_DA <- vipVn
+```
+
+```{r}
+#met <- gsub('^[0-9]+|^[A-z]+', '.', HC_ARTcomp_test$Accession)
+#met
+```
+
+```{r}
+#data <- HC_ARTcomp_test
+```
+
+```{r}
+names(data)
+```
+
+```{r}
+top_genes <- data[data$FDR < 0.01, ]
+
+
+dim(top_genes)
+# remove label for proteins with  - 1 < logFoldChange < 1
+for (nb_row in 1:nrow(data)){
+  if (data[nb_row, 1] %in% top_genes$Accession){
+    }else{
+      data[nb_row, 1] <- NA
+  }
+}
+```
+
+```{r}
+names(data)[2] <-"logFC"
+```
+
+```{r}
+library(ggrepel)
+```
+
+```{r}
+ggplot(data, aes(x=logFC, y=-log10(FDR))) + 
+  geom_point(data=subset(data, FDR <.1 & logFC < 0),aes(x=logFC,y=-log10(FDR),
+  size=abs(logFC),color=logFC))+scale_color_gradient(high = "#4ca64c", low = "#003300") + 
+  geom_point(data=subset(data, FDR <.1 & logFC > 0),aes(x=logFC,y=-log10(FDR),
+  size=abs(logFC),fill=logFC),shape=21,color="#ff5d5d") + 
+  scale_fill_gradient(low = "#ff4c4c", high = "#7f0000")+ 
+  geom_point(data=subset(data, FDR>=.1),aes(x=logFC,y=-log10(FDR),size=abs(logFC)),
+             color="grey") +
+  theme_bw()+
+  geom_label_repel(aes(label = Accession),size=2,label.size = 0.1,box.padding=0.5) + 
+  theme(legend.title=element_text(size=8),legend.text=element_text(size=6),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=9),axis.title.x=element_text(size=9),
+        axis.text.y=element_text(size=7),axis.text.x=element_text(size=7)) +
+  labs(x="Log2 Fold Change",y="-log10 (Adj.pvalue)",title= name_ana)
+
+path_fig <- paste0("results/Cameroon/figures/", name_ana, "_Man_Withney_volcano_plot.pdf")
+dev.copy(pdf,path_fig)
+dev.off()
+```
+
+```{r}
+clustering_DGE(met_data_2, HC_ARTcomp_test,"Cameroon_metabolon", 6, 24, 24, "red", "blue")
+```
+
+```{r}
+write.csv(results_man_withney, "results/Cameroon/Features/data_upset_cameroon_metabolomics_man_withney.csv")
+write.csv(results_rf, "results/Cameroon/Features/data_upset_cameroon_metabolomics_RF.csv")
+write.csv(results_PLS_DA, "results/Cameroon/Features/data_upset_cameroon_metabolomics_PLS_DA.csv")
+```
+```{r}
+data_intercept <- results_PLS_DA$metabolites[results_PLS_DA$metabolites %in% results_rf$metabolites & results_PLS_DA$metabolites %in% results_man_withney$Accession]
+
+write.csv(data_intercept, "results/Cameroon/Features/Intercept_Cameroon_3_methods.pdf")
+```
+remove antiviral drugs
+rownames(data_antiviral)
+```{r}
+data_intercept <- data_intercept[!(data_intercept %in% rownames(data_antiviral))]
+```
+
+```{r}
+convert_met <- read.csv("processing/conversion_table_metabolomics.csv")
+names(convert_met)
+```
+
+```{r}
+met_data_select <- met_data[, colnames(met_data) %in% data_intercept]
+```
+
+```{r}
+met_data_select <- data.frame(t(met_data_select))
+met_data_select$X.1 <- rownames(met_data_select)
+```
+
+```{r}
+met_data_select_2 <- merge(met_data_select, convert_met, by = "X.1")
+```
+
+```{r}
+write.csv(met_data_select_2, "processing/biomarkers_selected_Cameroon.csv")
+```
+
+```{r}
+listInput <- list(as.vector(results_rf$metabolites),
+                   results_PLS_DA$metabolites, results_man_withney$Accession)
+names(listInput) <- c("RandomForest", "PLS-DA", "Man Withney Test")
+```
+
+```{r}
+pdf(file="results/Cameroon/figures/upset_plot_Cameroon.pdf", width=11, height=6) # or other device
+upset(fromList(listInput), order.by = "freq",
+      main.bar.color = "#000033",
+      sets.bar.color=c("maroon","#3939ac","#00b33c"),
+      text.scale = 2,
+      point.size = 5)
+dev.off()
+```
+
+```{r}
+list_cross_val <- read.csv("results/Cameroon/Features/data_upset_cameroon_metabolomics_RF.csv")
+```
+
+```{r}
+features_PLS_DA <- read.csv("results/Cameroon/Features/data_upset_cameroon_metabolomics_PLS_DA.csv")
+```
+
+```{r}
+features_man_withney <- read.csv("results/Cameroon/Features/data_upset_cameroon_metabolomics_man_withney.csv")
+```
+
+```{r}
+listInput <- list(as.vector(list_cross_val$variable),
+                   as.vector(features_PLS_DA$metabolites),
+                   as.vector(features_man_withney$Accession))
+names(listInput) <- c("RandomForest", "PLS-DA", "Man Withney Test")
+```
+
+```{r}
+pdf(file="results/India/figures/upset_plot_Cameroon_2.pdf", width=11, height=6) # or other device
+upset(fromList(listInput), order.by = "freq",
+      main.bar.color = "#000033",
+      sets.bar.color=c("maroon","#3939ac","#00b33c"),
+      text.scale = 2, point.size
+ = 4)
+dev.off()
+```
+
+
+1-palmitoyl-2-linoleoyl-GPC (16:0/18:2)
+5alpha-androstan-3alpha,17beta-diol monosulfate (1)
+alpha-tocopherol
+androstenediol (3alpha, 17alpha) monosulfate (3)
+androsterone sulfate
+behenoyl dihydrosphingomyelin (d18:0/22:0)*
+betaine
+bilirubin (E,E)*
+bilirubin (E,Z or Z,E)*
+epiandrosterone sulfate
+hydroxy-CMPF*
+hyocholate
+lactate
+metabolonic lactone sulfate
+methionine sulfone
+succinate
+
+```{r}
+library(xlsx)
+library(umap)
+```
+
+```{r}
+results <- read.xlsx("results/Cameroon_metabolites_overlap.xlsx",1)
+```
+
+```{r}
+met_data_5 <- met_data_2[rownames(met_data_2) %in% results$Metabolites, ]
+```
+
+```{r}
+met.data = t(as.matrix(met_data_5))
+met.labels = metabolon_condition
+```
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+pdf("umap_plot.pdf")
+umap.plot(met.umap, as.factor(met.labels))
+dev.off()
+```
+
+

@@ -1,0 +1,227 @@
+---
+title: "Clustering"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(ConsensusClusterPlus)
+```
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+```{r}
+c_IN_ART <- "#FFB146"
+c_IN_VP <- "#FF8C00"
+c_IN_HC <- "#FFE7C7"
+```
+
+## make heatmap from the network
+
+```{r}
+biomarkers_neig <- read.csv("/home/flomik/Desktop/Code-PHD/Association_analysis/results/Networks/biomarkers_first_enibourgs.csv")
+```
+
+```{r}
+global_ART_communities <- read.csv("/home/flomik/Desktop/Code-PHD/Association_analysis/results/Networks/ART_communities_global.csv")
+```
+```{r}
+biomarkers <- c("5alpha-androstan-3alpha,17beta-diol monosulfate (1)", "androsterone sulfate", "epiandrosterone sulfate", "metabolonic lactone sulfate", "methionine sulfone")
+```
+
+
+## Cameroon
+```{r}
+global_ART_communities <- global_ART_communities[global_ART_communities$Degree > 82 | global_ART_communities$name %in% biomarkers,]
+```
+
+good --> 80
+
+
+# Cameroon
+
+## heatmap biomarkers + neibourgs
+
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/filter_metabolic_data_Cameroon.csv")
+#data[,-1][data[,-1] > 5] <- 5
+rownames(data) <- data$X
+data <- data[data$X %in% biomarkers_neig$n,]
+data[,-1] <- log2(data[,-1])
+data[,-1] <- data.frame(t(scale(t(data[,-1]))))
+rownames(data) <- data$X
+data$X <- NULL
+```
+
+```{r}
+colCols <- c(rep("HC", 24), rep("ART", 24))
+```
+
+```{r}
+col_fun1 = colorRamp2(c(-6, -2, 0, 2, 6), c("#004C00","#008000","white","#E50000","#7F0000"))
+col_fun1 = colorRamp2(c(-6, -1.5, 0, 1.5, 6), c("#008000","#7fbf7f","white","#f49999","#E50000"))
+```
+
+```{r}
+df <- data.frame(condition = colCols, names = names(data))
+```
+
+
+#' Clustering with ConsensusClusterPlust
+#'
+#' @param mat matrix to cluster 
+#' @param distance method of clustering
+#' @param clusterAlg algo clustering
+my_clustering <- function(mat, distance, clusterAlg, name_ana, condition){
+  rcc = ConsensusClusterPlus(as.matrix(mat),maxK=20,reps=1000,pItem=0.8,pFeature=1,title=name_ana,distance=distance,clusterAlg=clusterAlg, plot="pdf")
+  print(rcc)
+  data <- data.frame(rcc[[2]][["consensusClass"]])
+  data[,1] <- as.factor(data[,1])
+  names(data)[1] <- "cluster"
+  #data$cluster <- ifelse(data$cluster == 1, paste0(name_ana, "_", 1), paste0(name_ana, "_", 2))
+  data$condition <- condition
+  data_2 <-data.frame(table(data))
+  return(data_2)
+}
+
+
+```{r}
+#cameroon_network <- my_clustering(data,"spearman", "hc", "network_biomarkers", colCols)
+#cameroon_network 
+```
+
+```{r}
+rcc = ConsensusClusterPlus(as.matrix(data),maxK=4,reps=1000,pItem=0.8,pFeature=1,title="network_biomarkers_Cameroon_2",distance="spearman",clusterAlg="hc", plot="pdf")
+x <- rcc[[2]]$consensusMatrix
+y <- data.frame(rcc[[2]][["consensusClass"]])
+min(x)
+max(x)
+```
+```{r}
+col_fun = colorRamp2(c(0.001, 1), c("white", "#FF6F61"))
+```
+```{r}
+pdf("consensusclusterplus_cameroon_2_clusters_2_10.pdf", height = 6, width = 7)
+ht = Heatmap(as.matrix(x))
+df <- data.frame(condition = colCols)
+ha = HeatmapAnnotation(group = colCols, cluster = y$rcc..2.....consensusClass..., col = list(group = c("HC" = "#A2C0D9", "ART" = "#0080FF"), cluster = c("1" = "#B2DF8A", "2" = "#33A02C")))
+
+ht = Heatmap(as.matrix(x), col = col_fun, top_annotation = ha, show_column_names = FALSE, show_row_names = FALSE)
+draw(ht, show_heatmap_legend = TRUE, show_annotation_legend = FALSE)
+dev.off()
+```
+```{r}
+rcc = ConsensusClusterPlus(as.matrix(data),maxK=4,reps=1000,pItem=0.8,pFeature=1,title="network_biomarkers_Cameroon_2",distance="spearman",clusterAlg="hc", plot="pdf")
+x <- rcc[[3]]$consensusMatrix
+y <- data.frame(rcc[[3]][["consensusClass"]])
+min(x)
+max(x)
+```
+```{r}
+col_fun = colorRamp2(c(0.001, 1), c("white", "#FF6F61"))
+```
+```{r}
+pdf("consensusclusterplus_cameroon_3_clusters_2.pdf", height = 6, width = 7)
+ht = Heatmap(as.matrix(x))
+df <- data.frame(condition = colCols)
+ha = HeatmapAnnotation(group = colCols, cluster = y$rcc..3.....consensusClass..., col = list(group = c("HC" = "#A2C0D9", "ART" = "#0080FF"), cluster = c("1" = "#B2DF8A", "2" = "#33A02C",
+                                                                                                                                                         "3" = "#FB9A99")))
+
+ht = Heatmap(as.matrix(x), col = col_fun, top_annotation = ha, show_column_names = FALSE, show_row_names = FALSE)
+draw(ht, show_heatmap_legend = TRUE, show_annotation_legend = FALSE)
+dev.off()
+```
+
+
+## India
+
+## heatmap biomarkers + neibourgs
+```{r}
+india <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/India/India_filter.xlsx", 1)
+india <- india[india$BIOCHEMICAL %in% biomarkers_neig$n,]
+india[,-1] <- log2(india[,-1])
+india[,-1] <- data.frame(t(scale(t(india[,-1]))))
+rownames(india) <- india$BIOCHEMICAL
+india$BIOCHEMICAL <- NULL
+```
+
+```{r}
+colCols <- c(rep("HC", 22), rep("ART", 22))
+```
+
+```{r}
+#india_network <- my_clustering(india,"pearson", "hc", "network_biomarkers", colCols)
+#india_network 
+```
+```{r}
+rcc = ConsensusClusterPlus(as.matrix(india),maxK=20,reps=1000,pItem=0.8,pFeature=1,title="network_biomarkers_india_2",distance="spearman",clusterAlg="hc", plot="pdf")
+x <- rcc[[2]]$consensusMatrix
+y <- data.frame(rcc[[2]][["consensusClass"]])
+min(x)
+max(x)
+```
+```{r}
+col_fun = colorRamp2(c(0.001, 1), c("white", "#FF6F61"))
+```
+
+```{r}
+pdf("consensusclusterplus_india_2_clusters.pdf", height = 6, width = 7)
+ht = Heatmap(as.matrix(x))
+df <- data.frame(condition = colCols)
+ha = HeatmapAnnotation(group = colCols, cluster = y$rcc..2.....consensusClass..., col = list(group = c("HC" = "#FFE7C7", "ART" = "#FFB146"), cluster = c("1" = "#B2DF8A", "2" = "#33A02C")))
+
+ht = Heatmap(as.matrix(x), col = col_fun, top_annotation = ha, show_column_names = FALSE, show_row_names = FALSE)
+draw(ht, show_heatmap_legend = TRUE, show_annotation_legend = FALSE)
+dev.off()
+```
+```{r}
+rcc = ConsensusClusterPlus(as.matrix(india),maxK=20,reps=1000,pItem=0.8,pFeature=1,title="network_biomarkers_india_2",distance="spearman",clusterAlg="hc", plot="pdf")
+x <- rcc[[3]]$consensusMatrix
+y <- data.frame(rcc[[3]][["consensusClass"]])
+min(x)
+max(x)
+```
+```{r}
+col_fun = colorRamp2(c(0.001, 1), c("white", "#FF6F61"))
+```
+
+```{r}
+pdf("consensusclusterplus_india_3_clusters.pdf", height = 6, width = 7)
+ht = Heatmap(as.matrix(x))
+df <- data.frame(condition = colCols)
+ha = HeatmapAnnotation(group = colCols, cluster = y$rcc..3.....consensusClass..., col = list(group = c("HC" = "#FFE7C7", "ART" = "#FFB146"), cluster = c("1" = "#B2DF8A", "2" = "#33A02C",
+                                                                                                                                                         "3" = "#FB9A99")))
+
+ht = Heatmap(as.matrix(x), col = col_fun, top_annotation = ha, show_column_names = FALSE, show_row_names = FALSE)
+draw(ht, show_heatmap_legend = TRUE, show_annotation_legend = FALSE)
+dev.off()
+```
+
+
+
+```{r}
+col_fun = colorRamp2(c(0.001, 1), c("white", "#FF6F61"))
+```
+```{r}
+pdf("consensusclusterplus_cameroon.pdf", height = 6, width = 7)
+ht = Heatmap(as.matrix(x))
+df <- data.frame(condition = colCols)
+ha = HeatmapAnnotation(group = colCols, cluster = y$rcc..2.....consensusClass..., col = list(group = c("HC" = "#A2C0D9", "ART" = "#0080FF"), cluster = c("1" = "#B2DF8A", "2" = "#33A02C")))
+
+ht = Heatmap(as.matrix(x), col = col_fun, top_annotation = ha, show_column_names = FALSE, show_row_names = FALSE)
+draw(ht, show_heatmap_legend = TRUE, show_annotation_legend = FALSE)
+dev.off()
+```

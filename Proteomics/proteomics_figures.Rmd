@@ -1,0 +1,632 @@
+---
+title: "Figures Proteomics"
+output: html_notebook
+---
+
+
+Input files :
+- results DGE from models
+
+Plan :
+1) Make Upset Plot U1 corrected
+2) Make bubble plots pathways
+3) Make heatmap oxphos
+3) Prepare input Cytoscape network oxphos
+
+
+## load data
+```{r}
+m3 <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_3_results_U1_filt.txt", stringsAsFactors = FALSE) ## U1 corrected
+m2 <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_2_results_U1_filt.txt", stringsAsFactors = FALSE) ## not used in the paper
+m1 <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_1_results_U937_filt.txt", stringsAsFactors = FALSE) ## U937
+```
+
+```{r}
+list_table <- list(m1, m2, m3)
+list_names <- c("m1", "m2", "m3")
+```
+
+```{r}
+i <- 1
+j <- 2
+```
+
+```{r}
+z <- 1
+list_comp <- list()
+list_names_2 <- list()
+for (i in 1:3){
+  y <- list_table[[i]]
+  x <- unique(y$Comp)
+  for (j in 1:length(x)){
+    y_2 <- y[y$Comp == x[j],]
+    write.table(data.frame(y_2$Gene_name), file = paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/", list_names[i], "_", x[j],".txt"), sep = "\t", row.names = FALSE, quote = FALSE)
+    list_comp[[z]] <- y_2$Gene_name
+    list_names_2[[z]] <- paste0(list_names[i], "_", x[j])
+    z <- z + 1 
+  }
+}
+```
+
+```{r}
+library(nVennR)
+```
+```{r}
+list_m1 <- list_comp[grep("m1", list_names_2)]
+names(list_m1) <- list_names_2[grep("m1", list_names_2)]
+```
+
+```{r}
+list_m3 <- list_comp[grep("m3", list_names_2)]
+names(list_m3) <- list_names_2[grep("m3", list_names_2)]
+```
+
+## upset plot
+```{r}
+library(UpSetR)
+```
+
+```{r}
+pdf(file="/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/upset_plot_Model_3_U1.pdf", width=12, height=6, family="mono") # or other device
+upset(fromList(list_m3), 
+      order.by = "freq",
+      main.bar.color = "#000033",
+      sets.bar.color=c("#3939ac","#00b33c", "#ffcc66", "orange"),
+      text.scale = 2, point.size
+ = 4)
+dev.off()
+```
+```{r}
+list_c1 <- list_comp[grep("U1_CDON-Ctrl", list_names_2)]
+names(list_c1) <- list_names_2[grep("U1_CDON-Ctrl", list_names_2)]
+myV <- plotVenn(list_c1, nCycles = 2000, outFile = "overlap_U1_CDON-Ctrl.svg")
+```
+
+```{r}
+list_c1 <- list_comp[grep("U1_Pros-Ctrl", list_names_2)]
+names(list_c1) <- list_names_2[grep("U1_Pros-Ctrl", list_names_2)]
+myV <- plotVenn(list_c1, nCycles = 2000, outFile = "overlap_U1_Pros-Ctrl.svg")
+```
+
+```{r}
+list_c1 <- list_comp[grep("U1_PDON-CDON", list_names_2)]
+names(list_c1) <- list_names_2[grep("U1_PDON-CDON", list_names_2)]
+myV <- plotVenn(list_c1, nCycles = 2000, outFile = "overlap_U1_U1_PDON-CDON.svg")
+```
+
+
+```{r}
+list_c1 <- list_comp[grep("U1_PDON-Pros", list_names_2)]
+names(list_c1) <- list_names_2[grep("U1_PDON-Pros", list_names_2)]
+myV <- plotVenn(list_c1, nCycles = 2000, outFile = "overlap_U1_U1_PDON-Pros.svg")
+```
+
+
+## m1
+
+```{r}
+library(ggvenn)
+```
+
+```{r}
+pdf("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/Venn_diagram_U937_model1.pdf")
+ggvenn(
+  list_m1,
+  stroke_size = 0.5, set_name_size = 4, show_percentage = FALSE
+  )
+dev.off()
+```
+
+
+## load pathway analysis (KEGG metabolism)
+```{r}
+m1_CDON_C <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_1_CDON_C.txt")
+m1_CDON_C$Comp <- "CDON_C"
+m1_PDON_CDON <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_1_PDON-CDON.txt")
+m1_PDON_CDON$Comp <- "PDON_CDON"
+m1_PDON_P <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_1_PDON-P.txt")
+m1_PDON_P$Comp <- "PDON_P"
+m1_Pros_C <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_1_Pros-Ctrl.txt")
+m1_Pros_C$Comp <- "Pros_C"
+m3_CDON_C <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_3_CDON_C.txt")
+m3_CDON_C$Comp <- "CDON_C"
+m3_PDON_CDON <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_3_PDON-CDON.txt")
+m3_PDON_CDON$Comp <- "PDON_CDON"
+m3_PDON_P <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_3_PDON-P.txt")
+m3_PDON_P$Comp <- "PDON_P"
+m3_Pros_C <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_3_Pros-Ctrl.txt")
+m3_Pros_C$Comp <- "Pros_C"
+```
+
+
+```{r}
+m1 <- rbind(m1_CDON_C, m1_PDON_CDON, m1_PDON_P, m1_Pros_C)
+m1_2 <- m1[m1$P.value < 0.1,]
+```
+
+```{r}
+m3 <- rbind(m3_CDON_C, m3_PDON_CDON, m3_PDON_P, m3_Pros_C)
+m3_2 <- m3[m3$P.value < 0.1,]
+```
+
+```{r}
+table <- m1_2
+```
+
+## bubble plot
+```{r}
+table <- table[order(table$P.value),]
+table$rank <- NA
+table$rank <- 1:nrow(table)
+table$rank[table$Comp == "CDON_C"] <- 1:nrow(table[table$Comp == "CDON_C",])
+table$rank[table$Comp == "PDON_CDON"] <- 1:nrow(table[table$Comp == "PDON_CDON",])
+table$rank[table$Comp == "PDON_P"] <- 1:nrow(table[table$Comp == "PDON_P",])
+table$rank[table$Comp == "Pros_C"] <- 1:nrow(table[table$Comp == "Pros_C",])
+
+table$rank <- as.factor(as.numeric(as.character(table$rank)))
+table$Overlap <- as.numeric(as.character(gsub("/.*", "", table$Overlap)))
+```
+```{r}
+library(ggplot2)
+```
+
+```{r}
+library(viridis)
+```
+
+```{r}
+table_U9 <- table
+table_U9$Cell_line <- "U9"
+```
+
+
+```{r}
+pdf("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/pathway_analysis_model1_U937.pdf", height = 5, width = 8)
+a <- ggplot(table, aes(x = Comp, y = Term, size = Overlap, color = rank))+
+        geom_point()+ theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), axis.text.x=element_text(size=20, color = "black"),
+          axis.title.y=element_blank(), axis.title.x = element_blank(), axis.text.y = element_text(size=20, color = "black"))+ geom_hline(color ="black", yintercept=0, size=0.2)+ theme_minimal()+ geom_vline(xintercept=0.4, size=0.2, color = "black")+xlab("")+ylab("")+ scale_colour_viridis_d(option = "plasma")+ scale_size_continuous(range = c(5, 10))+ 
+            geom_text(data = table, aes(label = rank), size=3, color = "white")
+a
+dev.off()
+```
+```{r}
+table <- m3_2
+```
+
+## bubble plot
+```{r}
+table <- table[order(table$P.value),]
+table$rank <- NA
+table$rank <- 1:nrow(table)
+table$rank[table$Comp == "CDON_C"] <- 1:nrow(table[table$Comp == "CDON_C",])
+table$rank[table$Comp == "PDON_CDON"] <- 1:nrow(table[table$Comp == "PDON_CDON",])
+table$rank[table$Comp == "PDON_P"] <- 1:nrow(table[table$Comp == "PDON_P",])
+table$rank[table$Comp == "Pros_C"] <- 1:nrow(table[table$Comp == "Pros_C",])
+
+table$rank <- as.factor(as.numeric(as.character(table$rank)))
+table$Overlap <- as.numeric(as.character(gsub("/.*", "", table$Overlap)))
+```
+```{r}
+library(ggplot2)
+```
+
+```{r}
+library(viridis)
+```
+
+```{r}
+table_U1 <- table
+table_U1$Cell_line <- "U1"
+```
+
+```{r}
+pdf("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/pathway_analysis_model3_U1.pdf", height = 6, width = 8)
+a <- ggplot(table, aes(x = Comp, y = Term, size = Overlap, color = rank))+
+        geom_point()+ theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), axis.text.x=element_text(size= 20, color = "black"),
+          axis.title.y=element_blank(), axis.title.x = element_blank(), axis.text.y = element_text(size=20, color = "black"))+ geom_hline(color ="black", yintercept=0, size=0.2)+ theme_minimal()+ geom_vline(xintercept=0.4, size=0.2, color = "black")+xlab("")+ylab("")+ scale_colour_viridis_d(option = "plasma")+ scale_size_continuous(range = c(5, 10))+ 
+            geom_text(data = table, aes(label = rank), size=3, color = "white")
+a
+dev.off()
+```
+```{r}
+table_U1$Comp <- paste0(table_U1$Cell_line, "_",table_U1$Comp)
+table_U9$Comp <- paste0(table_U9$Cell_line, "_",table_U9$Comp)
+```
+
+```{r}
+table <- rbind(table_U1, table_U9)
+```
+```{r}
+table$Comp <- factor(table$Comp, levels = c("U9_Pros_C", "U1_Pros_C","U9_CDON_C","U1_CDON_C","U9_PDON_P", "U1_PDON_P", "U9_PDON_CDON","U1_PDON_CDON"))
+```
+
+```{r}
+library(svglite)
+```
+
+```{r}
+a <- ggplot(table, aes(x = Comp, y = Term, size = Overlap, color = rank))+
+        geom_point()+ theme_minimal()+ theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), axis.text.x=element_text(size = 3, color = "black", angle = 90, vjust = 0.5, hjust=1),
+          axis.title.y=element_blank(), axis.title.x = element_blank(), axis.text.y = element_text(color = "black"), legend.position = "none")+ geom_hline(color ="black", yintercept=0, size=0.2)+ geom_vline(xintercept=0.4, size=0.2, color = "black")+xlab("")+ylab("")+ scale_colour_viridis_d(option = "plasma")+ scale_size_continuous(range = c(5, 10))+ 
+            geom_text(data = table, aes(label = rank), size=3, color = "white")
+a
+ggsave(file="/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/pathway_analysis_both_cell_lines.svg", height = 7, width = 8)
+```
+
+## heatmap
+
+```{r}
+data <- m3[m3$Comp %in% c("CDON_C"),]
+table <- data[data$P.value < 0.1,]
+```
+
+```{r}
+dge <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_3_results_U1_filt.txt", stringsAsFactors = FALSE)
+```
+```{r}
+dge_2 <- dge[dge$Comp %in% c("U1_CDON-Ctrl"),]
+dge_2 <- select(dge_2, Gene_name, logFC, adj.P.Val)
+```
+## networks PDON vs CDON / CDON vs C
+
+## extract comparisons
+# select top 10 pathways
+```{r}
+table_edges <- data.frame(Node_1 = NA, Node_2 = NA, Type = NA)
+```
+
+```{r}
+for (i in 1:nrow(table)){
+  x <- paste0(table$Genes[i], collapse=" ")
+  y <- as.list(strsplit(x, ";")[[1]])
+  path <- rep(table[i, 2], length(y))
+  a <-do.call(rbind.data.frame, y)
+  names(a)<- "Node_1"
+  a <-cbind(a, path, path)
+  names(a)[2]<- "Node_2"
+  names(a)[3]<- "Type"
+  table_edges <-rbind(table_edges, a)
+}
+```
+
+```{r}
+table_edges <-table_edges[complete.cases(table_edges),]
+```
+
+```{r}
+genes <- table_edges$Node_1[!duplicated(table_edges$Node_1)]
+```
+
+```{r}
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/", "proteins_string_CDON_C.txt")
+
+write.table(genes, file = path_nodes, sep = ",",
+            qmethod = "double", row.names = FALSE, quote = FALSE)
+```
+## add string interactions
+```{r}
+string <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/string/string_interactions_U1_CDON_C.tsv")
+```
+
+```{r}
+string$X.node1 <- toupper(string$X.node1)
+string$node2 <- toupper(string$node2)
+```
+
+```{r}
+string <- string[(string$X.node1 %in% table_edges$Node_1 & string$node2 %in% table_edges$Node_1),]
+string <- select(string, X.node1, node2)
+string$Type <- "prot-prot"
+```
+
+```{r}
+names(table_edges)
+```
+
+```{r}
+names(string)[1:2] <- c("Node_1", "Node_2")
+```
+
+
+```{r}
+table_edges <-rbind(string, table_edges)
+```
+
+```{r}
+head(table_edges)
+```
+
+```{r}
+table_nodes <- data.frame(Items = NA, Type = NA, logFC = 0, adj.P.Val = 0)
+```
+
+```{r}
+path <- table$Term
+table_path <- data.frame(Item = path, Type = "pathway", logFC = 0, adj.P.Val = 0)
+names(table_path)[1] <-  "Node_1"
+table_genes <- data.frame(Item = genes, Type = "gene")
+names(table_genes)[1] <-  "Node_1"
+```
+
+```{r}
+names(table_genes)
+```
+
+```{r}
+names(dge_2)[1] <- "Node_1"
+```
+
+```{r}
+table_genes <- merge(table_genes, dge_2, by= "Node_1", all.x = TRUE)
+```
+
+```{r}
+names(table_genes)
+```
+
+```{r}
+names(table_path)
+```
+
+```{r}
+table_nodes<- rbind(table_path, table_genes)
+```
+
+```{r}
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/CDON_C_table_nodes.txt")
+write.table(table_nodes, file = path_nodes, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+```{r}
+path_edges <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/CDON_C_table_edges.txt")
+write.table(table_edges, file = path_edges, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+
+```{r}
+genes <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/GeneInfo_Sorted.txt")
+names(genes)[1] <- "Node_1"
+```
+```{r}
+table_genes
+```
+
+```{r}
+genes <- genes[genes$Gene %in% table_edges$Node_1,]
+dge <- merge(genes, table_genes, by = "Node_1")
+```
+```{r}
+table(genes$Complex)
+```
+```{r}
+library(circlize)
+library(ComplexHeatmap)
+col_fun_2 = colorRamp2(c(-1.5,  - 0.001 ,0,  0.001, 1.5), c("blue", "#b3ccff","white","#ff9999", "red"))
+
+col_fun1 = colorRamp2(c(-2,-1,-0.5, 0,0.5,1,2), c("#7F7F00","#B2B200" ,"#E5E500","white","#BF7FBF","#993299","#590059"))
+
+col_fun = colorRamp2(c(-2, 0, 2), c("green", "white", "red"))
+```
+
+```{r}
+data <-read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/processing/data_after_batch_correction.csv")
+names(data)[1] <- "Accession"
+annotationInfo <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/processing/AnnotationInfoProteomics.csv", row.names = 1)
+names(annotationInfo)[1] <- "Accession"
+data <- merge(annotationInfo, data, by = "Accession")
+names(dge)[1] <- "Gene_name"
+data_2 <- merge(dge, data, by = "Gene_name")
+```
+
+```{r}
+data_2[,-c(1:6)] <- data.frame(t(scale(t(data_2[,-c(1:6)]))))
+rownames(data_2) <- data_2$Gene_name
+```
+
+```{r}
+table_names <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/processing/table_names.csv")
+```
+
+```{r}
+condition <- as.vector(table_names$condition)
+condition <- condition[condition != "Pool_Pool"]
+```
+
+```{r}
+u1_c_c <- "#1B85B8"
+u1_c_p <- "#9c9799"
+u1_c_cdon <- "#054F70"
+u1_c_pdon <- "#5C5859"
+
+u3_c_c <- "#ae5a41"
+u3_c_p <- "#559e83"
+u3_c_cdon <- "#66372A"
+u3_c_pdon <- "#315D4C"
+pool <- "#c3cb71"
+```
+
+```{r}
+col <- c(pool, u1_c_c, u1_c_cdon, u1_c_p, u1_c_pdon, u3_c_c, u3_c_cdon, u3_c_p, u3_c_pdon)
+```
+
+```{r}
+col <- c("#AE5A41", "#1B85B8", "#559E83", "#9C9799", "#66372A", "#054F70", "#315D4C", "#5C5859")
+```
+
+```{r}
+condition <- factor(condition, levels = c("U937_C", "U1_C", "U937_P", "U1_P", "U937_C.DON", "U1_C.DON","U937_P.DON", "U1_P.DON"))
+```
+
+
+```{r}
+pdf(paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/Heatmat_oxphos_C_CDON_U1_proteomics.pdf"), width = 14, height = 8)
+  ht = Heatmap(as.matrix(data_2[,-c(1:6)]),
+             col = col_fun1,
+             show_row_names = TRUE,
+             column_order = colnames(data_2)[-c(1:6)],
+             show_column_names = FALSE,
+             column_split = condition,
+            row_split = data_2$Complex,
+             row_title_rot = 0,
+             column_title_gp = gpar(fill = c(col)),
+             border = FALSE,
+             column_gap = unit(2, "mm"),
+             right_annotation = rowAnnotation(C_CDON = data_2$logFC,
+                                              
+                                              col = list(
+                                                         C_CDON = col_fun_2
+                                                         ),  show_legend = TRUE, gp = gpar(col = "grey")))
+
+ht_list = ht
+draw(ht_list)
+dev.off()
+```
+
+## heatmap
+```{r}
+
+```
+
+## PDON-CDON
+
+```{r}
+data <- m3[m3$Comp %in% c("PDON_CDON"),]
+table <- data[data$P.value < 0.1,]
+```
+
+```{r}
+dge <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_3_results_U1_filt.txt", stringsAsFactors = FALSE)
+```
+```{r}
+dge_2 <- dge[dge$Comp %in% c("U1_PDON-CDON"),]
+dge_2 <- select(dge_2, Gene_name, logFC, adj.P.Val)
+```
+
+## networks PDON vs CDON / CDON vs C
+
+## extract comparisons
+# select top 10 pathways
+```{r}
+table_edges <- data.frame(Node_1 = NA, Node_2 = NA, Type = NA)
+```
+
+```{r}
+for (i in 1:nrow(table)){
+  x <- paste0(table$Genes[i], collapse=" ")
+  y <- as.list(strsplit(x, ";")[[1]])
+  path <- rep(table[i, 2], length(y))
+  a <-do.call(rbind.data.frame, y)
+  names(a)<- "Node_1"
+  a <-cbind(a, path, path)
+  names(a)[2]<- "Node_2"
+  names(a)[3]<- "Type"
+  table_edges <-rbind(table_edges, a)
+}
+```
+
+```{r}
+table_edges <-table_edges[complete.cases(table_edges),]
+```
+
+```{r}
+genes <- table_edges$Node_1[!duplicated(table_edges$Node_1)]
+```
+
+```{r}
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/", "proteins_string_PDON_CDON.txt")
+
+write.table(genes, file = path_nodes, sep = ",",
+            qmethod = "double", row.names = FALSE, quote = FALSE)
+```
+
+## add string interactions
+
+```{r}
+string <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/string/string_interactions_U1_PDON_CDON.tsv")
+```
+
+```{r}
+string$X.node1 <- toupper(string$X.node1)
+string$node2 <- toupper(string$node2)
+```
+
+```{r}
+string <- string[(string$X.node1 %in% table_edges$Node_1 & string$node2 %in% table_edges$Node_1),]
+string <- select(string, X.node1, node2)
+string$Type <- "prot-prot"
+```
+
+```{r}
+names(table_edges)
+```
+
+```{r}
+names(string)[1:2] <- c("Node_1", "Node_2")
+```
+
+
+```{r}
+table_edges <-rbind(string, table_edges)
+```
+
+```{r}
+head(table_edges)
+```
+
+```{r}
+table_nodes <- data.frame(Items = NA, Type = NA, logFC = 0, adj.P.Val = 0)
+```
+
+```{r}
+path <- table$Term
+table_path <- data.frame(Item = path, Type = "pathway", logFC = 0, adj.P.Val = 0)
+names(table_path)[1] <-  "Node_1"
+table_genes <- data.frame(Item = genes, Type = "gene")
+names(table_genes)[1] <-  "Node_1"
+```
+
+```{r}
+names(table_genes)
+```
+
+```{r}
+names(dge_2)[1] <- "Node_1"
+```
+
+```{r}
+table_genes <- merge(table_genes, dge_2, by= "Node_1", all.x = TRUE)
+```
+
+```{r}
+names(table_genes)
+```
+
+```{r}
+names(table_path)
+```
+
+```{r}
+table_nodes<- rbind(table_path, table_genes)
+```
+
+```{r}
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/PDON_CDON_table_nodes.txt")
+write.table(table_nodes, file = path_nodes, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+```{r}
+path_edges <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/PDON_CDON_table_edges.txt")
+write.table(table_edges, file = path_edges, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+
+s
+
+```{r}
+table_edges$Node_1
+```
+

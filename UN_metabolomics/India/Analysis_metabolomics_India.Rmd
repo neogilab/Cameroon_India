@@ -1,0 +1,445 @@
+---
+title: "Automatic Metabolon Analysis"
+output: html_notebook
+---
+
+# General objective
+
+## Data input and output
+Inputs : 
+1) Metabolomics raw data is submitted (extracted from metabolon)
+2) Patients informations (extracted from metabolon)
+
+Ouputs :  
+1)  PCA (condition, age, sex, BMI, HIV status)
+2)  PLS-DA (supervized pca)
+3)  Two Sample T-Test (Welch's T-test) HIV / HIV + met
+4)  Biosigner results
+5)  Feature selection using random forest
+6)  ANCOVA/ linear regression
+
+# Outline:
+##  1) Parsing input file
+##  2) Select metabolites with HMDB (filtration)
+##  3) PCA
+##  4) PLS-DA
+##  5) Welch's T-test
+##  6) Biosigner
+##  7) Feature selection
+##  8) ANCOVA/ linear regression
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+# loading libraries
+# loading libraries
+```{r, message=FALSE}
+library(RColorBrewer)
+library(ggfortify)
+library(ropls)
+library(factoextra)
+library(dplyr)
+library(biosigner)
+library(caret)
+library(randomForest)
+library(mlbench)
+library(RColorBrewer)
+library(gplots)
+library(reshape2)
+library(xlsx)
+library(UpSetR)
+library(pROC)
+```
+
+```{r, message=FALSE}
+source("src/India/ML.R")
+source("src/India/usefull_functions.R")
+```
+
+## Study individual info
+```{r}
+name_ana <- "India"
+data_2 <- read.delim("processing/India/India_clean_data.txt", row.names = 1)
+info <- read.xlsx("data/India/India_filter.xlsx",2)
+
+condition <- info$condition
+
+table_condition <-cbind(names(data_2), as.vector(condition))
+
+n_c1 <- 22
+n_c2 <- 22
+```
+
+##  1) Statistical tests
+
+```{r}
+results_man_withney <- my_man_whithney(data_2, 22, 22, "HC", "PLHIV")
+```
+
+## biosigner
+```{r}
+x <- data_2
+y <- as.factor(c(rep("HC", 22), rep("PLHIV", 22)))
+path_fig <- paste0("results/ML/results_biosigner_hd4.pdf")
+#pdf(path_fig)
+#diaSign <- biosign(x, y, bootI = 50)
+#dev.off()
+```
+
+## PLS-DA : feature selection
+
+# PLS-DA
+
+```{r}
+# apply it
+#x_scaled <- scale(x)
+
+#2. unit-variance scalling
+
+path_fig <- paste0("results/", name_ana, "/PLSDA/", name_ana, 
+                   "_PLS-DA_HC_PLHIV.pdf")
+pdf(path_fig)
+met.plsda <- opls(t(x), y)
+dev.off()
+
+vipVn <- data.frame(getVipVn(met.plsda))
+vipVn$variable <- rownames(vipVn)
+```
+
+```{r}
+#ropls.plot(met.plsda, plottype = "score", xvar = "p1", yvar = "p2", hotelling = FALSE,
+#  ellipse = TRUE, col.var = NULL, col.pca = NULL)
+#ggsave("test_plsda.pdf")
+```
+
+# x scores
+```{r}
+path_fig <- paste0("results/", name_ana, "/PLSDA/", name_ana, 
+                   "_PLS-DA_HC_PLHIV_PCA.pdf")
+pdf(path_fig)
+plot(met.plsda, typeVc = "x-score", parLabVc = rep(".",44), parCexN = 3)
+dev.off()
+```
+
+```{r}
+vipVn <- arrange(vipVn, desc(getVipVn.met.plsda.))
+names(vipVn)
+
+#vipVn <- vipVn[1:50,]
+```
+
+```{r}
+pdf(paste0("results/", name_ana, "/figures/Vip_PLS-DA.pdf"), width = 30)
+p<-ggplot(data=vipVn, aes(x=reorder(variable, -getVipVn.met.plsda.), y=getVipVn.met.plsda.)) + theme_classic()+
+  geom_bar(stat="identity", fill="#d5e1df", size = 0.01)+ theme(text = element_text(size=4), axis.text.x = element_text(angle = 75, hjust = 1))+ labs(y="VipVn", x = "Metabolites")+ geom_hline(yintercept=1, linetype="dashed", color = "red")
+p
+dev.off()
+```
+
+## select top 30 features
+```{r}
+vipVn <- vipVn[1:30,]
+```
+
+```{r}
+features_PLS_DA <- vipVn$variable
+```
+
+## 2) random forest with cross validation
+```{r}
+table_cond <- data.frame(Group = y, t(x))
+```
+
+1) Run normal random forest
+```{r}
+set.seed(123)
+fit <- randomForest(Group ~ ., data = table_cond, na.action = na.roughfix)
+fit
+```
+
+## feature selection using Boruta
+
+```{r}
+table_cond <- data.frame(Condition = y, t(x))
+```
+
+```{r}
+data <- feature_select_Boruta(table_cond, name_ana)
+```
+
+```{r}
+names(data)[ncol(data)] <- "Group"
+```
+
+2) Cross validation
+# cross-validation
+# mtry tunning
+# number of trees tunning
+
+```{r}
+# tune mtry parameter : check results for value of mtry between 1 and 15
+set.seed(1)
+tunegrid <- expand.grid(.mtry = (1:15)) 
+
+# 10 -Fold cross validation
+control <- trainControl(method='repeatedcv', 
+                        number=10, 
+                        repeats=3,
+                        savePredictions = TRUE,
+                        ## Estimate class probabilities
+                        classProbs = TRUE,
+                        ## Evaluate performance using 
+                        ## the following function
+                        summaryFunction = twoClassSummary)
+
+
+set.seed(123)
+#Number randomely variable selected is mtry
+
+rf_default <- train(as.factor(Group)~., 
+                    data=data, 
+                    method='rf', 
+                    metric = 'ROC',
+                    tuneGrid=tunegrid, 
+                    trControl=control, importance = TRUE, ntree = 1000,
+                    )
+
+# keep final model
+rf <- rf_default$finalModel
+
+rf
+# save final model
+file_name <- paste0("results/India/ML/model_rf_2_", name_ana)
+saveRDS(rf, file_name)
+```
+
+```{r}
+rf <- readRDS("results/India/ML/model_rf_2_India")
+```
+
+```{r}
+library(randomForest)
+```
+
+```{r}
+test <- results_man_withney
+```
+
+```{r}
+names(test)[1] <- "variable"
+```
+
+```{r}
+var_importance <- randomForest::importance(rf)
+names <- rownames(var_importance)
+var_importance <- data.frame(MeanDecreaseAccuracy = var_importance[,4], variable = names)
+var_importance <- arrange(var_importance, MeanDecreaseAccuracy)
+
+position <- var_importance$variable
+
+var_importance <- merge(var_importance, test, by = "variable")
+
+significance <- ifelse(var_importance$Log2FC > 0, "up-regulated", "down-regulated")
+significance <- as.factor(significance)
+  
+var_importance$Log2FC <- NULL
+  
+var_importance <- arrange(var_importance, MeanDecreaseAccuracy)
+
+var_importance$Significance <- significance
+  
+path_fig <- paste0("results/", name_ana, "/figures/", name_ana,
+                   "_top_variable_importance.pdf")
+
+theme_set(theme_classic())
+ggplot(var_importance, aes(x=variable, y=MeanDecreaseAccuracy, color = Significance)) + geom_point(aes(colour=significance, fill=significance), size=3, shape = 21, color = "black")+ 
+  scale_fill_manual(values=c('#0066cc','#ff0000'))+ geom_segment(aes(x=variable, 
+                     xend=variable, 
+                     y=min(MeanDecreaseAccuracy), 
+                     yend=max(MeanDecreaseAccuracy)), 
+                 linetype="dashed", 
+                 size=0.1, color="black")+ scale_x_discrete(limits = position) +   # Draw dashed lines
+  labs(title="Variable importance") +  
+  coord_flip()
+ggsave(path_fig, width = 10)
+```
+
+```{r}
+selectedIndices <- rf_default$pred$mtry == 1
+```
+
+
+```{r}
+g <- ggplot(rf_default$pred[selectedIndices, ], aes(m=HC, d=factor(obs, levels = c("HC", "PLHIV")))) + geom_roc(n.cuts=0) + coord_equal() + style_roc(theme = theme_grey)
+g <- g + annotate("text", x = .75, y = .25, label = paste("AUC =", round(calc_auc(g)$AUC, 2)))
+
+ggsave("results/India/figures/India_ROC_hd4_10_cross_validate.pdf")
+```
+## confusion matrix
+
+```{r}
+table <- rf_default$pred[selectedIndices, ][,1:2]
+```
+
+```{r}
+table <- as.data.frame(table(table))
+```
+```{r}
+ggplotConfusionMatrix <- function(m){
+  p <-
+    ggplot(data = m ,
+           aes(x = obs, y = pred)) +
+    geom_tile(aes(fill = log(Freq)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "steelblue", limits=c(0, 10)) +
+    geom_text(aes(x = obs, y = pred, label = Freq)) +
+    theme(legend.position = "none") 
+  ggsave("results/India/figures/India_confusion_matrix_india.pdf")
+  return(p)
+}
+```
+
+```{r}
+ggplotConfusionMatrix(table)
+```
+```{r}
+list_cross_val <- var_importance$variable
+```
+
+# upset plot
+
+```{r}
+library(UpSetR)
+```
+
+```{r}
+results_man_withney <- results_man_withney[results_man_withney$FDR < 0.1,]
+```
+
+```{r}
+listInput <- list(as.vector(list_cross_val),
+                   features_PLS_DA,
+                   results_man_withney$Accession)
+names(listInput) <- c("RandomForest", "PLS-DA", "Man Withney Test")
+```
+
+```{r}
+pdf(file="results/India/figures/upset_plot_India.pdf", width=11, height=6) # or other device
+upset(fromList(listInput), order.by = "freq",
+      main.bar.color = "#000033",
+      sets.bar.color=c("maroon","#3939ac","#00b33c"),
+      text.scale = 2, point.size
+ = 4)
+dev.off()
+```
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_metabolites_randomforest.txt")
+
+list_cross_val <- read.delim(path_table)
+```
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_PLS-DA.txt")
+
+features_PLS_DA <- read.delim(path_table)
+```
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_metabolites_welshTtwotest.txt")
+features_man_withney <- read.delim(path_table)
+```
+
+```{r}
+listInput <- list(as.vector(list_cross_val$x),
+                   as.vector(features_PLS_DA$x),
+                   as.vector(features_man_withney$x))
+names(listInput) <- c("RandomForest", "PLS-DA", "Man Withney Test")
+```
+
+```{r}
+pdf(file="results/India/figures/upset_plot_India_2.pdf", width=11, height=6) # or other device
+upset(fromList(listInput), order.by = "freq",
+      main.bar.color = "#000033",
+      sets.bar.color=c("maroon","#3939ac","#00b33c"),
+      text.scale = 2, point.size
+ = 4)
+dev.off()
+```
+
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_metabolites_randomforest.txt")
+
+write.table(as.vector(unlist(list_cross_val)), file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+```
+
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_PLS-DA.txt")
+
+write.table(as.vector(unlist(features_PLS_DA)), file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+```
+
+```{r}
+path_table <- paste0("results/", name_ana, "/", 
+                     name_ana, "_metabolites_welshTtwotest.txt")
+
+write.table(as.vector(unlist(results_man_withney$Accession)), file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+```
+
+X16a.hydroxy.DHEA.3.sulfate
+X2R.3R.dihydroxybutyrate
+X4.hydroxyglutamate
+X4.methylbenzenesulfonate
+X5alpha.androstan.3alpha.17beta.diol.monosulfate..1.
+X7.methylurate
+andro.steroid.monosulfate.C19H28O6S..1..
+androstenediol..3alpha..17alpha..monosulfate..3.
+androsterone.sulfate
+epiandrosterone.sulfate
+hydroxypalmitoyl.sphingomyelin..d18.1.16.0.OH....
+lamivudine
+lysine
+metabolonic.lactone.sulfate
+methionine.sulfone
+N1.Methyl.2.pyridone.5.carboxamide
+N1.Methyl.4.pyridone.3.carboxamide
+N1.methylinosine
+
+
+### Overlap Cameroon/ India
+
+Man Withney
+
+1-palmitoyl-2-linoleoyl-GPC (16:0/18:2)
+5alpha-androstan-3alpha,17beta-diol monosulfate (1)
+5alpha-androstan-3beta,17beta-diol monosulfate (2)
+5alpha-pregnan-3beta,20alpha-diol disulfate
+7-methylurate
+androstenediol (3alpha, 17alpha) monosulfate (3)
+androsterone sulfate
+bilirubin (E,Z or Z,E)*
+efavirenz
+epiandrosterone sulfate
+glycohyocholate
+lamivudine
+metabolonic lactone sulfate
+methionine sulfone
+
+

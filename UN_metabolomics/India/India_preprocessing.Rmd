@@ -1,0 +1,103 @@
+---
+title: "India Preprocessing"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(xlsx)
+```
+
+```{r}
+name_ana <- "India"
+input <- read.xlsx("data/India/India_filter.xlsx",1)
+
+n_c1 <- 22
+n_c2 <- 22
+
+condition <- c(rep("HC", n_c1), rep("PLHIV", n_c2))
+```
+
+##  1) Parsing input file
+ 
+```{r}
+input <- input[!is.na(input$BIOCHEMICAL),]
+input <- input[1:901,]
+rownames(input) <- input$BIOCHEMICAL
+metabolites_names <- input$BIOCHEMICAL
+input$BIOCHEMICAL <- NULL
+```
+
+```{r}
+metabolites_2 <- gsub("[^[:alnum:]]",".",metabolites_names)
+```
+
+```{r}
+table_convert <- data.frame(metabolites = metabolites_names, metabolites_2 = metabolites_2)
+```
+
+```{r}
+write.csv(table_convert, "processing/India/India_convert_met_names.csv")
+```
+
+```{r}
+#rownames(input) <- metabolites_2
+```
+
+##  2) PCA
+
+a) Condition 1 vs Condition 2
+```{r}
+path_fig <- paste0("results/", name_ana, "/figures/", name_ana, 
+                   "_PCA.pdf")
+pdf(path_fig)
+hd4.pca <- opls(t(input))
+dev.off()
+```
+
+```{r, message=FALSE}
+path_fig <- paste0("results/", name_ana, "/figures/", name_ana, 
+                   "_PCA_label_condition.pdf")
+pdf(path_fig)
+plot(hd4.pca,
+     typeVc = "x-score",
+     parAsColFcVn = condition)
+dev.off()
+```
+
+```{r}
+data$isonicotinylglycine <- NULL
+data$Nimesulide <- NULL
+data$pregabalin <- NULL
+data$ranitidine <- NULL
+data$ranitidin <- NULL
+```
+
+```{r}
+data <- data.frame(t(data))
+```
+
+```{r}
+data_2 <- data
+```
+
+```{r}
+path_table <- paste0("processing/India/", 
+                     name_ana, "_clean_data.txt")
+
+write.table(data_2, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+```
+
+

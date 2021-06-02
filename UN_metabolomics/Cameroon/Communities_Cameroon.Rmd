@@ -1,0 +1,100 @@
+---
+title: "Metabolic Enrichment analysis"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+
+```{r}
+library(dplyr)
+library("Hmisc")
+library("psych")
+```
+
+### pairwise correlation between metabolites (separatly up and down)
+
+#### load data
+```{r}
+data <- read.csv("processing/Cameroon/filter_metabolic_data.csv")
+metabolites <- data$X
+rownames(data) <- data$X
+data$X <- NULL
+```
+
+```{r}
+data_ART <- select(data, contains("ART"))
+```
+
+```{r}
+input_net <- data.frame(t(data_ART))
+colnames(input_net) <- metabolites
+```
+
+```{r}
+write.csv(input_net, "results/network/data_ART_Cameroon.csv")
+```
+
+### filtering remove data with variance = 0
+```{r}
+input_net <- input_net[ - as.numeric(which(apply(input_net, 2, var) == 0))]
+```
+
+### correlation on ART patients for each metabolite
+```{r}
+flat_cor_mat <- function(cor_r, cor_p){
+  #This function provides a simple formatting of a correlation matrix
+  #into a table with 4 columns containing :
+    # Column 1 : row names (variable 1 for the correlation test)
+    # Column 2 : column names (variable 2 for the correlation test)
+    # Column 3 : the correlation coefficients
+    # Column 4 : the p-values of the correlations
+  library(tidyr)
+  library(tibble)
+  cor_r <- rownames_to_column(as.data.frame(cor_r), var = "row")
+  cor_r <- gather(cor_r, column, cor, -1)
+  cor_p <- rownames_to_column(as.data.frame(cor_p), var = "row")
+  cor_p <- gather(cor_p, column, p, -1)
+  cor_p_matrix <- left_join(cor_r, cor_p, by = c("row", "column"))
+  cor_p_matrix
+}
+
+cor_3 <- rcorr(as.matrix(input_net), type = "spearman")
+
+my_cor_matrix <- flat_cor_mat(cor_3$r, cor_3$P)
+head(my_cor_matrix)
+```
+
+```{r}
+my_cor_matrix$padj <- p.adjust(my_cor_matrix$p, method = "fdr")
+```
+
+Let's add two additional columns, where we assign R=0 for those correlations that are not statistically significant (adjusted P or FDR > 0.01).
+
+
+```{r}
+my_cor_matrix$cor <- ifelse(my_cor_matrix$padj > 0.05, NA, my_cor_matrix$cor)
+my_cor_matrix <- my_cor_matrix[complete.cases(my_cor_matrix), ]
+```
+```{r}
+write.csv(my_cor_matrix, "results/network/correlation_significant_metabolites.csv")
+```
+
+## select correlation FDR < 0.1
+
+We will now build 2 different networks to analyse further:
+
+A full association network filtered using FDR-corrected P values (<0.01). This is an unweighted network. The subset of positively associated features, where correlation coefficient is used as weight. k-NNG that we will generate from the expression profile. This will be unweighted.
+
+A random network based on the Erdos-Renyi model, with the same node and edge number as the first (full) network. This will be a null-model for our analyses. The idea is that if a certain property found in one of our graphs is reproduced in a random graph, then we do not need to account for any other possible explanations for that feature. In other words, if a property of a graph (e.g. clustering) is not found in a random network, we can assume that it does not appear in our biological network due to randomness.
+
+## network Rui

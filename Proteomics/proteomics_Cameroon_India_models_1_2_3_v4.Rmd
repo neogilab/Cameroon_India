@@ -1,0 +1,454 @@
+---
+title: "LIMMA models 1,2,3"
+output: html_notebook
+---
+
+
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/Proteomics_Cameroon_India/")) 
+```
+
+```{r}
+library(limma)
+```
+
+1) Normalization (quantile) + PCA
+2) Batch effect correction
+3) DGE (LIMMA)
+4) Venn diagram
+5) Pathway analysis
+
+```{r}
+name_ana <- "Proteomics_Cameroon_India"
+```
+
+```{r}
+library(xlsx)
+```
+
+```{r}
+table_names <- read.csv("processing/table_names.csv")
+```
+
+## load annotationInfo
+```{r}
+annotationInfo <- read.csv("processing/AnnotationInfoProteomics.csv", row.names = 1)
+#annotationInfo <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_virus/data/annotationInfo_Uniprot_gene_name")
+names(annotationInfo)[1] <- "Accession"
+```
+
+```{r}
+condition <- as.vector(table_names$condition)
+```
+
+```{r}
+condition <- ifelse(condition == "U1_C", "U1_Ctrl",condition)
+condition <- ifelse(condition == "U1_P", "U1_Pros",condition)
+condition <- ifelse(condition == "U1_C.DON", "U1_CDON",condition)
+condition <- ifelse(condition == "U1_P.DON", "U1_PDON",condition)
+```
+```{r}
+condition <- ifelse(condition == "U937_C", "U9_Ctrl",condition)
+condition <- ifelse(condition == "U937_P", "U9_Pros",condition)
+condition <- ifelse(condition == "U937_C.DON", "U9_CDON",condition)
+condition <- ifelse(condition == "U937_P.DON", "U9_PDON",condition)
+```
+```{r}
+condition <- condition[condition != "Pool_Pool"]
+```
+
+
+## Multiple comparisons
+
+```{r}
+table_names
+```
+
+```{r}
+treat <- gsub(".*\\_","",condition)
+cell <- gsub("\\_.*","",condition)
+cell <- factor(cell, levels = c("U9","U1"))
+p <- substring(treat,1,1)
+p <- as.factor(p)
+don <- treat
+don[grep("DON", treat)] <- "DON"
+don[don != "DON"] <- "non"
+don <- factor(don, levels = c("non", "DON"))
+```
+
+```{r}
+data <- read.csv("processing/data_after_batch_correction.csv", row.names = 1)
+```
+
+## Model 1 : Effect of prostatin and don in U937
+
+```{r}
+model <- "Model_1"
+```
+
+```{r}
+data_u9 <- data[,which(cell == "U9")]
+p_u9 <- as.factor(as.vector(p[which(cell == "U9")]))
+don_u9 <- factor(as.vector(don[which(cell == "U9")]), levels = c("non", "DON"))
+```
+
+```{r}
+design <- model.matrix( ~ p_u9*don_u9)
+design
+colnames(design) <- c("Intercept","Pros", "CDON", "PDON")
+design
+```
+```{r}
+fit <- lmFit(data_u9, design)
+```
+
+```{r}
+head(fit$coefficients)
+```
+
+```{r}
+#cont.matrix <- makeContrasts(U1CtrlvsU1DON="U1DON-cellU1",levels=design)
+cont.matrix <- makeContrasts(CtrlvsDON="CDON",
+                             CtrlvsPros="Pros",
+                             CDONvsPDON="PDON-CDON",
+                             ProsvsPDON="PDON-Pros",
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+# Execute eBayes to obtain attenuated t statistics(smoothing standard errors)
+fit.cont <- eBayes(fit.cont)
+
+top_table_1 <- topTable(fit.cont, coef=1, adjust="BH", n = Inf, sort.by = "P")
+top_table_1$Comp <- "CDON-Ctrl"
+top_table_1$Accession <- rownames(top_table_1)
+
+top_table_2 <- topTable(fit.cont, coef=2, adjust="BH", n = Inf, sort.by = "P")
+top_table_2$Comp <- "Pros-Ctrl"
+top_table_2$Accession <- rownames(top_table_2)
+
+top_table_3 <- topTable(fit.cont, coef=3, adjust="BH", n = Inf, sort.by = "P")
+top_table_3$Comp <- "PDON-CDON"
+top_table_3$Accession <- rownames(top_table_3)
+
+top_table_4 <- topTable(fit.cont, coef=4, adjust="BH", n = Inf, sort.by = "P")
+top_table_4$Comp <- "PDON-Pros"
+top_table_4$Accession <- rownames(top_table_4)
+
+top_table <- rbind(top_table_1, top_table_2, top_table_3, top_table_4)
+
+path_table <- paste0("results/DGE/Model_1_results_U937.txt")
+
+print(path_table)
+write.table(top_table, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+DF_top_table <- merge(annotationInfo, DF_top_table, all.y = TRUE, by = "Accession")
+
+path_results <- paste0("results/DGE/Model_1_results_U937_filt.txt")
+
+path_results_excel <- paste0("results/DGE/Model_1_results_U937_filt.xlsx")
+
+write.table(DF_top_table, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+
+write.xlsx(DF_top_table, file = path_results_excel,
+           sheetName = "U937", 
+           col.names = TRUE, row.names = TRUE, append = FALSE)
+
+```
+
+## Model 2
+```{r}
+model <- "Model_2"
+```
+fit a model with a coefficient for each of the four factor combinations and then to extract the comparisons of interest as contrasts
+
+```{r}
+treat <- factor(treat, levels = c("Ctrl", "CDON", "Pros", "PDON"))
+```
+
+```{r}
+design <- model.matrix( ~ cell*treat)
+design
+colnames(design)[c(1,6:8)] <- c("Intercept", "U1CDON", "U1Pros", "U1PDON")
+design
+```
+
+```{r}
+fit <- lmFit(data, design)
+```
+
+```{r}
+#cont.matrix <- makeContrasts(U1CtrlvsU1DON="U1DON-cellU1",levels=design)
+cont.matrix <- makeContrasts(CtrlvsDON="U1CDON",
+                             CtrlvsPros="U1Pros",
+                             CDONvsPDON="U1PDON-U1CDON",
+                             ProsvsPDON="U1PDON-U1Pros",
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+# Execute eBayes to obtain attenuated t statistics(smoothing standard errors)
+fit.cont <- eBayes(fit.cont)
+
+top_table_1 <- topTable(fit.cont, coef=1, adjust="BH", n = Inf, sort.by = "P")
+top_table_1$Comp <- "U1_CDON-Ctrl"
+top_table_1$Accession <- rownames(top_table_1)
+
+top_table_2 <- topTable(fit.cont, coef=2, adjust="BH", n = Inf, sort.by = "P")
+top_table_2$Comp <- "U1_Pros-Ctrl"
+top_table_2$Accession <- rownames(top_table_2)
+
+top_table_3 <- topTable(fit.cont, coef=3, adjust="BH", n = Inf, sort.by = "P")
+top_table_3$Comp <- "U1_PDON-CDON"
+top_table_3$Accession <- rownames(top_table_3)
+
+top_table_4 <- topTable(fit.cont, coef=4, adjust="BH", n = Inf, sort.by = "P")
+top_table_4$Comp <- "U1_PDON-Pros"
+top_table_4$Accession <- rownames(top_table_4)
+
+top_table <- rbind(top_table_1, top_table_2, top_table_3, top_table_4)
+
+path_table <- paste0("results/DGE/Model_2_results_U1.txt")
+
+print(path_table)
+write.table(top_table, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+DF_top_table <- merge(DF_top_table, annotationInfo, by = "Accession")
+
+path_results <- paste0("results/DGE/Model_2_results_U1_filt.txt")
+
+path_results_excel <- paste0("results/DGE/Model_2_results_U1_filt.xlsx")
+
+write.table(DF_top_table, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+
+write.xlsx(DF_top_table, file = path_results_excel,
+           sheetName = "U1", 
+           col.names = TRUE, row.names = TRUE, append = FALSE)
+
+```
+
+## Model 3
+
+```{r}
+model <- "Model_3"
+```
+
+```{r}
+design <- model.matrix( ~ cell*p + cell*don + cell:p:don)
+design
+colnames(design)[c(1,5:8)] <- c("Intercept","U1Pros","U1CDON","U9PDON", "U1PDON")
+design
+```
+
+```{r}
+fit <- lmFit(data, design)
+```
+
+```{r}
+#cont.matrix <- makeContrasts(U1CtrlvsU1DON="U1DON-cellU1",levels=design)
+cont.matrix <- makeContrasts(CtrlvsDON="U1CDON",
+                             CtrlvsPros="U1Pros",
+                             CDONvsPDON="U1PDON-U1CDON",
+                             ProsvsPDON="U1PDON-U1Pros",
+                             U9vsU1 = "cellU1",
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+# Execute eBayes to obtain attenuated t statistics(smoothing standard errors)
+fit.cont <- eBayes(fit.cont)
+
+top_table_1 <- topTable(fit.cont, coef=1, adjust="BH", n = Inf, sort.by = "P")
+top_table_1$Comp <- "U1_CDON-Ctrl"
+top_table_1$Accession <- rownames(top_table_1)
+
+top_table_2 <- topTable(fit.cont, coef=2, adjust="BH", n = Inf, sort.by = "P")
+top_table_2$Comp <- "U1_Pros-Ctrl"
+top_table_2$Accession <- rownames(top_table_2)
+
+top_table_3 <- topTable(fit.cont, coef=3, adjust="BH", n = Inf, sort.by = "P")
+top_table_3$Comp <- "U1_PDON-CDON"
+top_table_3$Accession <- rownames(top_table_3)
+
+top_table_4 <- topTable(fit.cont, coef=4, adjust="BH", n = Inf, sort.by = "P")
+top_table_4$Comp <- "U1_PDON-Pros"
+top_table_4$Accession <- rownames(top_table_4)
+
+
+top_table_5 <- topTable(fit.cont, coef=5, adjust="BH", n = Inf, sort.by = "P")
+top_table_5$Comp <- "U1_U9"
+top_table_5$Accession <- rownames(top_table_4)
+
+top_table <- rbind(top_table_1, top_table_2, top_table_3, top_table_4, top_table_5)
+
+path_table <- paste0("results/DGE/Model_3_results_U1.txt")
+
+print(path_table)
+write.table(top_table, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+
+DF_top_table <- merge(DF_top_table, annotationInfo, by = "Accession")
+
+path_results <- paste0("results/DGE/Model_3_results_U1_filt.txt")
+
+path_results_excel <- paste0("results/DGE/Model_3_results_U1_filt.xlsx")
+
+write.table(DF_top_table, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+
+write.xlsx(DF_top_table, file = path_results_excel,
+           sheetName = "U1", 
+           col.names = TRUE, row.names = TRUE, append = FALSE)
+
+```
+```{r}
+list_u1_u9 <- DF_top_table[DF_top_table$Comp == "U1_U9",]
+
+#list_u1_u9 <-list_u1_u9[list_u1_u9$adj.P.Val < 0.001, ]
+
+list_u1_u9 <- list_u1_u9[list_u1_u9$logFC < -1 | list_u1_u9$logFC > 1,]
+
+write.table(list_u1_u9$Gene_name, file = "results/GSEA_models/U1_U9_model_3.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+write.csv(list_u1_u9, "results/DGE/U1_U9_model_3_filt.csv")
+```
+
+## Model 4  : Ctrl (U937 - U1)
+
+```{r}
+model <- "Model_4"
+```
+
+```{r}
+design <- model.matrix( ~ cell:p:don)
+design
+colnames(design) <- c("Intercept","U9C","U1C","U9P", "U1P", "U9DON", "U1DON","U9PDON", "U1PDON")
+design
+```
+
+```{r}
+fit <- lmFit(data, design)
+```
+
+```{r}
+#cont.matrix <- makeContrasts(U1CtrlvsU1DON="U1DON-cellU1",levels=design)
+cont.matrix <- makeContrasts(Comp="U1C-U9C",
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+# Execute eBayes to obtain attenuated t statistics(smoothing standard errors)
+fit.cont <- eBayes(fit.cont)
+
+top_table_1 <- topTable(fit.cont, coef=1, adjust="BH", n = Inf, sort.by = "P")
+top_table_1$Comp <- "Ctrl (U1-U937)"
+top_table_1$Accession <- rownames(top_table_1)
+
+top_table <- rbind(top_table_1)
+
+path_table <- paste0("results/DGE/Model_4_results_U1.txt")
+
+print(path_table)
+write.table(top_table, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+
+DF_top_table <- merge(DF_top_table, annotationInfo, by = "Accession")
+
+path_results <- paste0("results/DGE/Model_4_results_U1_filt.txt")
+
+path_results_excel <- paste0("results/DGE/Model_4_results_U1_filt.xlsx")
+
+write.table(DF_top_table, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+
+write.xlsx(DF_top_table, file = path_results_excel,
+           sheetName = "U1", 
+           col.names = TRUE, row.names = TRUE, append = FALSE)
+
+
+```
+
+```{r}
+write.table(data.frame(DF_top_table$Gene_name), "results/DGE/Model_4_U1_U937.txt", quote = FALSE, row.names = FALSE)
+```
+## Model 5 : U1 vs U9
+## Model 1 : Effect of prostatin and don in U937
+
+```{r}
+model <- "Model_1"
+```
+
+```{r}
+condition
+```
+
+```{r}
+data_ctrl <- data[,which(condition %in% c("U1_Ctrl", "U9_Ctrl"))]
+condition_ctrl <- condition[which(condition %in% c("U1_Ctrl", "U9_Ctrl"))]
+```
+```{r}
+groups <- as.factor(condition_ctrl)
+design <- model.matrix( ~ 0 + groups)
+colnames(design) <- levels(groups) # change colnames to KO and WT
+
+# Fit linear model : estimate fold change and standard errors
+fit <- lmFit(data_ctrl, design)
+# Fit linear model : estimate fold change and standard errors
+cont.matrix <- makeContrasts("U1_Ctrl-U9_Ctrl",levels=design)
+print(cont.matrix)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+# Execute eBayes to obtain attenuated t statistics(smoothing standard errors)
+fit.cont <- eBayes(fit.cont)
+top_table <- topTable(fit.cont, adjust="BH", n = Inf, sort.by = "P")
+top_table$Accession <- rownames(top_table) 
+
+path_table <- paste0("results/DGE/Model_5_results_U937_U1.txt")
+
+print(path_table)
+write.table(top_table, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+DF_top_table <- merge(annotationInfo, DF_top_table, all.y = TRUE, by = "Accession")
+
+path_results <- paste0("results/DGE/Model_5_results_U937_U1_filt.txt")
+
+path_results_excel <- paste0("results/DGE/Model_5_results_U937_U1_filt.xlsx")
+
+write.table(DF_top_table, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+
+write.xlsx(DF_top_table, file = path_results_excel,
+           sheetName = "U937", 
+           col.names = TRUE, row.names = TRUE, append = FALSE)
+
+```
+```{r}
+list_u1_u9 <- DF_top_table
+
+#list_u1_u9 <-list_u1_u9[list_u1_u9$adj.P.Val < 0.001, ]
+
+#list_u1_u9 <- list_u1_u9[list_u1_u9$logFC < -1 | list_u1_u9$logFC > 1,]
+
+write.table(list_u1_u9$Gene_name, file = "results/GSEA_models/U1_U9_model_3.txt", 
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+write.csv(list_u1_u9, "results/DGE/U1_U9_model_3_filt.csv")
+```
+

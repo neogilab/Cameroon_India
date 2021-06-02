@@ -1,0 +1,24 @@
+---
+title: "Convert id"
+output: html_notebook
+---
+
+```{r}
+data <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/ven_diagram_untargeted.xlsx", 2, header = FALSE)
+```
+```{r}
+colnames(data) <- "metabolites_2"
+```
+
+```{r}
+convert <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/India/India_convert_met_names.csv")
+```
+
+```{r}
+data <- merge(data, convert, by = "metabolites_2", all.x = TRUE)
+```
+
+```{r}
+write.xlsx(data, "/home/flomik/Desktop/Code-PHD/India_Cameroon/results/ven_diagram_untargeted_2.xlsx")
+```
+

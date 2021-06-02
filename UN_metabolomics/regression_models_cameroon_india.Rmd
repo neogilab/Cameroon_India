@@ -1,0 +1,403 @@
+---
+title: "Regression models (Cameroon)"
+output: html_notebook
+---
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+
+```{r}
+library(umap)
+library(dplyr)
+library(ggplot2)
+```
+
+
+## load datasets
+```{r}
+cameroon <- read.csv("processing/cameroon_data_biomarkers.csv")
+```
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+```{r}
+c_IN_ART <- "#FFB146"
+c_IN_VP <- "#FF8C00"
+c_IN_HC <- "#FFE7C7"
+```
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+```{r}
+c_border_IN_HC <- "#ccb89f"
+c_border_IN_ART <- "#cc8d38"
+c_border_IN_VP <- "#cc7000"
+```
+
+
+Cameroon : correct for
+- Viral load in copies/mL, median IQR)
+- CD4 current, median (IQR)
+- Exercise, n (%)
+
+
+India : correct for
+- CD4 current, median (IQR)
+= CD8, median (IQR)
+= Viral load in copies/mL, median IQR)
+
+## Cameroon
+```{r}
+data_cameroon <- read.csv("processing/data_with_clinical_data.csv")
+data_cameroon <- data_cameroon[, c(1, 250, 291, 410, 563, 565, 844:870)]
+data_cameroon$X <- NULL
+
+data_cameroon_pca <- data.frame(condition = data_cameroon$condition, log2(data_cameroon[,c(1:5)]))
+
+
+data_cameroon[,c(1:5)] <- scale(data_cameroon[,c(1:5)])
+```
+```{r}
+met.data = data_cameroon_pca[,-1]
+met.labels = data_cameroon_pca[,1]
+```
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[6:7] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 6, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_CM_ART, c_border_CM_HC))+ scale_fill_manual(name = "Condition", values=c(c_CM_ART, c_CM_HC))+
+  stat_ellipse(linetype = 1, aes(color = Condition))
+
+ggsave("results/figures/biomarkers_umap_cameroon.pdf", width = 6, height = 5)
+```
+
+
+
+```{r}
+str(data_cameroon)
+```
+
+```{r}
+names(data_cameroon)
+```
+
+```{r}
+age <-data_cameroon$Age..years.
+condition <- data_cameroon$condition
+SEB <-data_cameroon$socio.economic.background
+exercice <- data_cameroon$Exercise
+sex <- data_cameroon$Gender
+```
+
+```{r}
+r <- c()
+r2 <- c()
+plm <- as.data.frame(matrix(0,nrow=5,ncol=4))
+for(i in 1:5){ #scdat is my data frame with each column a metabolite
+  plm[i,] <- coef(summary(lm(data_cameroon[,i] ~ condition +  SEB + age + exercice + sex)))[2,]
+  h <- summary(lm(data_cameroon[,i] ~ condition +  SEB + age + exercice + sex))$r.squared
+  m <- summary(lm(data_cameroon[,i] ~ condition +  SEB + age + exercice + sex))$adj.r.squared
+  print(h)
+  r <- c(r, h)
+  r2 <- c(r2, m)
+}
+colnames(plm) <- c("Estimate","StdError","tStat","pvalue")
+rownames(plm) <- colnames(data_cameroon)[1:5]
+plm$padjust <- p.adjust(plm$pvalue,method="BH")
+plm$R2 <- r
+plm$R2_adj <- r2
+sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
+sigplm
+
+write.csv(sigplm, "processing/Table_S4.csv")
+```
+
+```{r}
+model1 <- lm(data_cameroon[,1] ~ condition +  SEB + exercice + sex)
+model2 <- lm(data_cameroon[,2] ~ condition +  SEB + exercice + sex)
+model3 <- lm(data_cameroon[,3] ~ condition +  SEB + exercice + sex)
+model4 <- lm(data_cameroon[,4] ~ condition +  SEB + exercice + sex)
+model5 <- lm(data_cameroon[,5] ~ condition +  SEB + exercice + sex)
+```
+```{r}
+model1Frame <- data.frame(Variable = rownames(summary(model1)$coef),
+                          Coefficient = summary(model1)$coef[, 1],
+                          SE = summary(model1)$coef[, 2],
+                          modelName = "5alpha-androstan-3alpha,17beta-diol monosulfate (1)")
+model2Frame <- data.frame(Variable = rownames(summary(model2)$coef),
+                          Coefficient = summary(model2)$coef[, 1],
+                          SE = summary(model2)$coef[, 2],
+                          modelName = "androsterone sulfate")
+model3Frame <- data.frame(Variable = rownames(summary(model3)$coef),
+                          Coefficient = summary(model3)$coef[, 1],
+                          SE = summary(model3)$coef[, 2],
+                          modelName = "epiandrosterone sulfate")
+model4Frame <- data.frame(Variable = rownames(summary(model4)$coef),
+                          Coefficient = summary(model4)$coef[, 1],
+                          SE = summary(model4)$coef[, 2],
+                          modelName = "metabolonic lactone sulfate")
+model5Frame <- data.frame(Variable = rownames(summary(model5)$coef),
+                          Coefficient = summary(model5)$coef[, 1],
+                          SE = summary(model5)$coef[, 2],
+                          modelName = "methionine sulfone")
+```
+```{r}
+allModelFrame <- data.frame(rbind(model1Frame, model2Frame, model3Frame,model4Frame,model5Frame))
+```
+```{r}
+allModelFrame <- allModelFrame[allModelFrame$Variable != "(Intercept)",]
+```
+
+```{r}
+position <- rev(allModelFrame$Variable)
+interval1 <- -qnorm((1-0.9)/2)  # 90% multiplier
+```
+
+```{r}
+library(ggplot2)
+```
++ scale_yx_discrete(limits = position)
+```{r}
+# Plot
+zp1 <- ggplot(allModelFrame, aes()) + geom_hline(yintercept = 0, colour = "black")
+zp1 <- zp1 + facet_grid(.~modelName, scales='free_x', space="free_x")
+zp1 <- zp1 + geom_linerange(aes(x = Variable, ymin = Coefficient - SE*interval1,
+                                ymax = Coefficient + SE*interval1), lwd = 1, position = position_dodge(width = 1/2))
+zp1 <- zp1 + coord_flip()+ geom_point(aes(Variable, Coefficient), shape = 18, size = 4)
+print(zp1)  # The trick to these is position_dodge().
+
+ggsave("results/figures/regression_models_cameroon.pdf", width = 10, height = 2)
+```
+```{r}
+biomarkers <- c("5alpha-androstan-3alpha,17beta-diol monosulfate (1)", "androsterone sulfate", "epiandrosterone sulfate", "metabolonic lactone sulfate", "methionine sulfone")
+```
+
+
+## India
+```{r}
+library(xlsx)
+ids <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/Master_Database 10042019.xlsx", 1)
+names(ids)
+```
+```{r}
+data <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/India/India_filter.xlsx", 4)
+names(data)
+```
+```{r}
+data <- data[data$BIOCHEMICAL %in% biomarkers, ]
+rownames(data) <- data$BIOCHEMICAL
+data$BIOCHEMICAL <- NULL
+```
+```{r}
+data_2 <- data.frame(t(data))
+data_2$Patient_ID <- rownames(data_2)
+```
+```{r}
+ids$Patient_ID <- gsub("#","_", ids$Patient_ID)
+```
+
+```{r}
+data_3 <- merge(data_2, ids, by = "Patient_ID", all.x = TRUE)
+data_3$condition <- c(rep("ART", 22), rep("HC", 22))
+```
+```{r}
+age <- data_3$Age
+sex <- data_3$Gender
+condition <- data_3$condition
+```
+```{r}
+rownames(data_3) <- data_3$Patient_ID
+data_3$Patient_ID <-NULL
+```
+
+
+```{r}
+data_india_pca <- data.frame(condition = data_3$condition, log2(data_3[,c(1:5)]))
+
+met.data = data_india_pca[,-1]
+met.labels = data_india_pca[,1]
+```
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[6:7] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 6, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_IN_ART, c_border_IN_HC))+ scale_fill_manual(name = "Condition", values=c(c_IN_ART, c_IN_HC))+
+  stat_ellipse(linetype = 1, aes(color = Condition))
+
+ggsave("results/figures/biomarkers_umap_India.pdf", width = 6, height = 5)
+```
+
+```{r}
+plm <- as.data.frame(matrix(0,nrow=5,ncol=4))
+for(i in 1:5){ #scdat is my data frame with each column a metabolite
+  plm[i,] <- coef(summary(lm(data_3[,i] ~ condition + age + sex)))[2,]
+}
+colnames(plm) <- c("Estimate","StdError","tStat","pvalue")
+rownames(plm) <- colnames(data_cameroon)[1:5]
+plm$padjust <- p.adjust(plm$pvalue,method="BH")
+sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
+sigplm
+write.csv(sigplm, "processing/Table_S5.csv")
+```
+
+```{r}
+model1_i <- lm(data_3[,1] ~ condition +  age + sex)
+model2_i <- lm(data_3[,2] ~ condition +  age + sex)
+model3_i <- lm(data_3[,3] ~ condition +  age + sex)
+model4_i <- lm(data_3[,4] ~ condition +  age + sex)
+model5_i <- lm(data_3[,5] ~ condition +  age + sex)
+```
+```{r}
+model1Frame_i <- data.frame(Variable = rownames(summary(model1_i)$coef),
+                          Coefficient = summary(model1_i)$coef[, 1],
+                          SE = summary(model1_i)$coef[, 2],
+                          modelName = "5alpha-androstan-3alpha,17beta-diol monosulfate (1)")
+model2Frame_i <- data.frame(Variable = rownames(summary(model2_i)$coef),
+                          Coefficient = summary(model2_i)$coef[, 1],
+                          SE = summary(model2_i)$coef[, 2],
+                          modelName = "androsterone sulfate")
+model3Frame_i <- data.frame(Variable = rownames(summary(model3_i)$coef),
+                          Coefficient = summary(model3_i)$coef[, 1],
+                          SE = summary(model3_i)$coef[, 2],
+                          modelName = "epiandrosterone sulfate")
+model4Frame_i <- data.frame(Variable = rownames(summary(model4_i)$coef),
+                          Coefficient = summary(model4_i)$coef[, 1],
+                          SE = summary(model4_i)$coef[, 2],
+                          modelName = "metabolonic lactone sulfate")
+model5Frame_i <- data.frame(Variable = rownames(summary(model5_i)$coef),
+                          Coefficient = summary(model5_i)$coef[, 1],
+                          SE = summary(model5_i)$coef[, 2],
+                          modelName = "methionine sulfone")
+```
+```{r}
+allModelFrame <- data.frame(rbind(model1Frame_i, model2Frame_i, model3Frame_i,model4Frame_i,model5Frame_i))
+```
+
+```{r}
+#allModelFrame$Cohort <- c(rep("Cameroon", 4*5), rep("India", 3*5))
+```
+
+```{r}
+allModelFrame <- allModelFrame[allModelFrame$Variable != "(Intercept)",]
+```
+
+```{r}
+# Plot
+zp1 <- ggplot(allModelFrame, aes()) + geom_hline(yintercept = 0, colour = "black")
+zp1 <- zp1 + facet_grid(.~modelName, scales='free_x', space="free_x")
+zp1 <- zp1 + geom_linerange(aes(x = Variable, ymin = Coefficient - SE*interval1,
+                                ymax = Coefficient + SE*interval1), lwd = 1, position = position_dodge(width = 1/2))
+zp1 <- zp1 + coord_flip()+ geom_point(aes(Variable, Coefficient), shape = 18, size = 4)
+print(zp1)  # The trick to these is position_dodge().
+
+ggsave("results/figures/regression_models_India.pdf", width = 10, height = 2)
+```
+
+```{r}
+library(ggpubr)
+```
+
+```{r}
+library(ggpubr)
+
+ggscatter(data_cor, x = "cysteine.glutathione.disulfide", y = "palmitoylcholine",
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman",
+          xlab = "cysteine.glutathione.disulfide level", ylab = "palmitoycholine level")
+
+ggsave("results/figures/scatter_plot_1.pdf")
+```
+
+```{r}
+names(data_cameroon)
+```
+```{r}
+library(ggpubr)
+```
+
+```{r}
+for (i in 1:5){
+  ggscatter(data_cameroon, x = "BMI", y = names(data_cameroon)[i],
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman",
+          ylab = paste0(names(data_cameroon)[i], "level"), xlab = "BMI")
+  ggsave(paste0("results/regression/", "Cameroon_correlation_BMI_", names(data_cameroon)[i], ".pdf"))
+  
+}
+```
+
+```{r}
+data_cameroon <- data_cameroon[data_cameroon$condition =="ART treated-C", ]
+```
+```{r}
+data_3 <- data_3[data_3$condition =="ART", ]
+```
+```{r}
+names(data_3)
+```
+## India
+```{r}
+for (i in 1:5){
+  for (j in c(12, 13, 14, 16)) {
+    ggscatter(data_3, x = names(data_3)[j], y = names(data_3)[i],
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman",
+          ylab = paste0(names(data_3)[i], " level"), xlab = paste0(names(data_3)[j], " level"))
+    ggsave(paste0("results/regression/", "India_correlation_ART_", names(data_3)[j], "_", names(data_3)[i], ".pdf"))
+  }
+}
+```
+
+
+
+
+
+

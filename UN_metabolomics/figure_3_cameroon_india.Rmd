@@ -1,0 +1,248 @@
+---
+title: "figure 1 Cameroon India"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(umap)
+library(dplyr)
+library(ggplot2)
+library(xlsx)
+```
+
+1) stacked bar plot (instead of donuts) all, p value, FDR horizontal
+2) boxplots as targeted
+
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+
+
+## load files
+```{r}
+path <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_metabolites_info.csv")
+names(path)
+path <- select(path, SUPER.PATHWAY, BIOCHEMICAL)
+path <- path[!path$SUPER.PATHWAY == "", ]
+
+
+met <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Man_whithney/Cameroon_HC_vs_ART_Man_whitney_test_results.csv")
+met <- met[!is.na(met$FDR),]
+ipa <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/src/extra/Cameroon_2.2/results/IPA/man_withney_ipa_pvalue_0.05.xlsx",1)
+```
+## merge with communities
+```{r}
+network <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/association analysis/table_nodes_global_network_Cameroon.csv")
+network$Degree <- NULL
+network$Network <- NULL
+names(network)[2] <- "Accession"
+```
+
+```{r}
+met <- merge(network, met, by = "Accession")
+names(path)[2] <- "Accession"
+path <- merge(path, met, by = "Accession")
+path$X <- NULL
+path <- path[!is.na(path$Log2FC),]
+path <- select(path, SUPER.PATHWAY, Community)
+```
+
+
+## Donut 1 (all metabolites)
+
+```{r}
+
+```
+
+
+## Count numbers per categorie
+```{r}
+d1 <- path
+d1 <- data.frame(table(d1))
+d1$fraction <- NA
+d1$Name <- NA
+d1$Community <- as.integer(as.character(d1$Community))
+colnames(d1)[c(1,3)] <- c("Category", "count")
+count_table <- aggregate(count ~ Community, d1, sum)
+d1$Community
+d1 <- d1[d1$count != 0,]
+for (i in 1:nrow(d1)) {
+  for (j in 1:6) {
+    if (d1[i,2] == j) {
+      d1[i,4] = d1[i,3] / count_table[j, 2]
+      d1[i,5] <- paste0("C", d1[i,2],", N = ", count_table[j, 2])
+      
+    }
+  }
+}
+
+```
+
+```{r}
+library(scales)
+```
+
+```{r}
+mycols <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+```
+
+```{r}
+d1$Name <- factor(d1$Name, levels = rev(levels(as.factor(d1$Name))))
+```
+
+
+```{r}
+d1$Category <- factor(d1$Category, levels = rev(levels(d1$Category)))
+```
+
+```{r}
+ggplot(d1, aes(fill=Category, y=fraction, x=Name)) + 
+    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
+  labs(x="Community number",y="Superpathways")+
+    scale_fill_manual(values = rev(mycols))+
+  geom_text(aes(label=ifelse(fraction >= 0.09, paste0("n = ", count, ", \n", round(fraction*100, 0), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y="", x="")+theme(legend.position = "none")
+
+ggsave("results/figures/barplot_communities.pdf", width = 6, height = 5)
+```
+
+## boxplots biomarkers
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+```{r}
+c_IN_ART <- "#FFB146"
+c_IN_VP <- "#FF8C00"
+c_IN_HC <- "#FFE7C7"
+```
+
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+```{r}
+c_border_IN_HC <- "#ccb89f"
+c_border_IN_ART <- "#cc8d38"
+c_border_IN_VP <- "#cc7000"
+```
+
+```{r}
+cameroon <- read.csv("processing/cameroon_data_biomarkers.csv")
+#cameroon$X <- NULL
+names(cameroon)
+india <- read.csv("processing/india_data_biomarkers.csv")
+names(india)
+data <- rbind(cameroon, india)
+```
+```{r}
+data$condition_2 <- factor(data$condition_2, levels = c("HC_Cameroon", "ART_Cameroon","HC_India", "ART_India"))
+```
+```{r}
+data$condition <- factor(data$condition, levels = c("HC","ART"))
+```
+```{r}
+names(data)
+```
+```{r}
+pdf("test_2_boxplot.pdf", height = 6, width = 4)
+ggplot(data, aes(as.factor(data[,8]), log2(data[,2]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+
+    labs(x="", y = "Log2(AU)")+ggtitle("androsterone sulfate")+
+  theme(strip.text = element_text(size=25), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+ geom_jitter(shape=16, position=position_jitter(0.2),color = "#323437", size = 3) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))
+dev.off()
+```
+```{r}
+theme_grey(
+  base_size = 11,
+  base_family = "Arial Narrow",
+  base_line_size = base_size/22,
+  base_rect_size = base_size/22
+)
+```
+
+
+```{r}
+a <- ggplot(data, aes(as.factor(data[,8]), log2(data[,2]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+
+    labs(x="", y = "Log2(AU)")+ggtitle("androsterone sulfate")+
+  theme(strip.text = element_text(size=20), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+ geom_jitter(shape=19, position=position_jitter(0.2),color = "#323437", size = 2) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))
+a
+b <- ggplot(data, aes(as.factor(data[,8]), log2(data[,3]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+
+    labs(x="", y = "Log2(AU)")+ggtitle("epiandrosterone sulfate")+
+  theme(strip.text = element_text(size=20), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+ geom_jitter(shape=19, position=position_jitter(0.2),color = "#323437", size = 2) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))
+b
+c <- ggplot(data, aes(as.factor(data[,8]), log2(data[,4]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+
+    labs(x="", y = "Log2(AU)")+ggtitle("metabolonic lactone sulfate")+
+  theme(strip.text = element_text(size=20), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+ geom_jitter(shape=19, position=position_jitter(0.2),color = "#323437", size = 2) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))
+c
+d <- ggplot(data, aes(as.factor(data[,8]), log2(data[,5]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+
+    labs(x="", y = "Log2(AU)")+ggtitle("methionine sulfone")+
+  theme(strip.text = element_text(size=20), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+ geom_jitter(shape=19, position=position_jitter(0.2),color = "#323437", size = 2) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))
+d
+
+e <- ggplot(data, aes(as.factor(data[,8]), log2(data[,6]), fill = as.factor(data[,9]))) + 
+    geom_boxplot(lwd=0.25, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data[,7])+labs(x="", y = "Log2(AU)")+ggtitle("5a.androstan.3a.17b.diol.monosulfate1.")+
+  theme(strip.text = element_text(size=20), axis.text.y = element_text(colour="black", size = 15), axis.title.y = element_text(size=20,face="bold"), legend.position = "none", axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())+ scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_IN_HC, c_IN_ART))+ geom_jitter(shape=19, position=position_jitter(0.2),color = "#323437", size = 2)
+e
+```
+```{r}
+list_figures <- list(a, b, c, d, e)
+```
+
+```{r}
+j <- matrix(1:5, nrow = 1, ncol = 5)
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+cairo_pdf("results/figures/biomarkers_boxplots_figure_3_3.pdf", height = 6, width = 20,family="mono")
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```

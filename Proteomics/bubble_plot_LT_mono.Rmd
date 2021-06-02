@@ -1,0 +1,301 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Plan
+1) Bubble plot U937 / U1 / Jurkat / Jlat
+2) Volcano plots AA / TCA
+
+```{r}
+library(ggplot2)
+library(viridis)
+library(dplyr)
+```
+
+
+## load enrichment results
+```{r}
+lt <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/LT.txt")
+lt <- lt[lt$P.value < 0.05,]
+lt$Comp <- "Jlat-Jurkat"
+mono <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/GSEA_models/model_3_U1_U9.txt")
+mono <- mono[mono$P.value < 0.05,]
+mono$Comp <- "U1-U937"
+```
+
+## load dge
+```{r}
+dge_lt <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Proteomics_Cameroon_India_LT_Jurk_vs_Jlat_DGE_results_filt.csv")
+dge_mono <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_5_results_U937_U1_filt.txt")
+```
+
+## prepare bubble plots
+```{r}
+table <- rbind(lt, mono)
+table <- table[order(table$P.value),]
+table$rank <- NA
+table$rank <- 1:nrow(table)
+table$rank[table$Comp == "Jlat-Jurkat"] <- 1:nrow(table[table$Comp == "Jlat-Jurkat",])
+table$rank[table$Comp == "U1-U937"] <- 1:nrow(table[table$Comp == "U1-U937",])
+
+table$rank <- as.factor(as.numeric(as.character(table$rank)))
+table$Overlap <- as.numeric(as.character(gsub("/.*", "", table$Overlap)))
+```
+
+```{r}
+pdf("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/pathway_analysis_U1_U937.pdf", height = 5, width = 8)
+a <- ggplot(table, aes(x = Comp, y = Term, size = Overlap, color = rank))+
+        geom_point()+ theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), axis.text.x=element_text(size=20, color = "black"),
+          axis.title.y=element_blank(), axis.title.x = element_blank(), axis.text.y = element_text(size=20, color = "black"))+ geom_hline(color ="black", yintercept=0, size=0.2)+ theme_minimal()+ geom_vline(xintercept=0.4, size=0.2, color = "black")+xlab("")+ylab("")+ scale_colour_viridis_d(option = "plasma")+ scale_size_continuous(range = c(5, 10))+ 
+            geom_text(data = table, aes(label = rank), size=3, color = "white")
+a
+dev.off()
+```
+```{r}
+svg("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/pathway_analysis_U1_U937.svg", height = 4, width = 5)
+a <- ggplot(table, aes(x = Comp, y = Term, size = Overlap, color = rank))+
+        geom_point()+ theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank(), axis.text.x=element_text(size=20, color = "black"),
+          axis.title.y=element_blank(), axis.title.x = element_blank(), axis.text.y = element_text(size=20, color = "black"))+ geom_hline(color ="black", yintercept=0, size=0.2)+ theme_minimal()+ geom_vline(xintercept=0.4, size=0.2, color = "black")+xlab("")+ylab("")+ scale_colour_viridis_d(option = "plasma")+ scale_size_continuous(range = c(5, 10))+ 
+            geom_text(data = table, aes(label = rank), size=3, color = "white")
+a
+dev.off()
+```
+## network
+
+LT
+```{r}
+table <- lt
+dge <- dge_lt
+dge_2 <- dge[,c(3, 4, 8)]
+
+table_edges <- data.frame(Node_1 = NA, Node_2 = NA, Type = NA)
+
+
+for (i in 1:nrow(table)){
+  x <- paste0(table$Genes[i], collapse=" ")
+  y <- as.list(strsplit(x, ";")[[1]])
+  path <- rep(table[i, 2], length(y))
+  a <-do.call(rbind.data.frame, y)
+  names(a)<- "Node_1"
+  a <-cbind(a, path, path)
+  names(a)[2]<- "Node_2"
+  names(a)[3]<- "Type"
+  table_edges <-rbind(table_edges, a)
+}
+
+table_edges <-table_edges[complete.cases(table_edges),]
+genes <- table_edges$Node_1[!duplicated(table_edges$Node_1)]
+
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/", "proteins_string_LT.txt")
+
+write.table(genes, file = path_nodes, sep = ",",
+            qmethod = "double", row.names = FALSE, quote = FALSE)
+```
+
+
+
+
+```{r}
+string <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/string_interactions_lt.csv")
+
+string <- string[(string$X.node1 %in% table_edges$Node_1 & string$node2 %in% table_edges$Node_1),]
+string <- string[,c(1:2)]
+string$Type <- "prot-prot"
+
+names(string)[1:2] <- c("Node_1", "Node_2")
+
+table_edges <-rbind(string, table_edges)
+path_edges <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/lt_table_edges.txt")
+write.table(table_edges , file = path_edges, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+```{r}
+table_nodes <- data.frame(Items = NA, Type = NA, logFC = 0, adj.P.Val = 0)
+path <- table$Term
+table_path <- data.frame(Item = path, Type = "pathway", logFC = 0, adj.P.Val = 0)
+names(table_path)[1] <-  "Node_1"
+table_genes <- data.frame(Item = genes, Type = "gene")
+names(table_genes)[1] <-  "Node_1"
+
+names(dge_2)[1] <- "Node_1"
+table_genes <- merge(table_genes, dge_2, by= "Node_1", all.x = TRUE)
+table_nodes<- rbind(table_path, table_genes)
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/lt_table_nodes.txt")
+write.table(table_nodes, file = path_nodes, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+MONO
+```{r}
+table <- mono
+dge <- dge_mono
+dge_2 <- dge[,c(3, 4, 8)]
+
+table_edges <- data.frame(Node_1 = NA, Node_2 = NA, Type = NA)
+
+
+for (i in 1:nrow(table)){
+  x <- paste0(table$Genes[i], collapse=" ")
+  y <- as.list(strsplit(x, ";")[[1]])
+  path <- rep(table[i, 2], length(y))
+  a <-do.call(rbind.data.frame, y)
+  names(a)<- "Node_1"
+  a <-cbind(a, path, path)
+  names(a)[2]<- "Node_2"
+  names(a)[3]<- "Type"
+  table_edges <-rbind(table_edges, a)
+}
+
+table_edges <-table_edges[complete.cases(table_edges),]
+genes <- table_edges$Node_1[!duplicated(table_edges$Node_1)]
+
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/", "proteins_string_mono.txt")
+
+write.table(genes, file = path_nodes, sep = ",",
+            qmethod = "double", row.names = FALSE, quote = FALSE)
+```
+
+```{r}
+string <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/string_interactions_mono.csv")
+
+string <- string[(string$X.node1 %in% table_edges$Node_1 & string$node2 %in% table_edges$Node_1),]
+string <- string[,c(1:2)]
+string$Type <- "prot-prot"
+
+names(string)[1:2] <- c("Node_1", "Node_2")
+
+table_edges <-rbind(string, table_edges)
+path_edges <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/mono_table_edges.txt")
+write.table(table_edges , file = path_edges, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+```{r}
+table_nodes <- data.frame(Items = NA, Type = NA, logFC = 0, adj.P.Val = 0)
+path <- table$Term
+table_path <- data.frame(Item = path, Type = "pathway", logFC = 0, adj.P.Val = 0)
+names(table_path)[1] <-  "Node_1"
+table_genes <- data.frame(Item = genes, Type = "gene")
+names(table_genes)[1] <-  "Node_1"
+
+names(dge_2)[1] <- "Node_1"
+table_genes <- merge(table_genes, dge_2, by= "Node_1", all.x = TRUE)
+table_nodes<- rbind(table_path, table_genes)
+path_nodes <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/network/mono_table_nodes.txt")
+write.table(table_nodes, file = path_nodes, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+
+
+### volcano plot Jlat/Jurkat
+## load dge
+```{r}
+dge_lt <- read.xlsx("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Proteomics_Cameroon_India_LT_Jurk_vs_Jlat_DGE_results.xlsx",1)
+dge_mono <- read.delim("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/DGE/Model_5_results_U937_U1.txt")
+annotationInfo <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/processing/AnnotationInfoProteomics.csv")
+names(annotationInfo)[2] <- "Accession"
+dge_mono <- merge(dge_mono, annotationInfo, by = "Accession")
+```
+
+```{r}
+aa <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/aa.csv")
+aa <- as.vector(aa$biosynthesis.of.amino.acids)
+tca <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/tca.csv")
+tca <- as.vector(tca$citrate.cycle..tca.cycle.)
+```
+
+
+
+## make 4 volcano plots
+```{r}
+#' Save figure as PDF in results
+#'
+#' @param file 
+#' @param name_ana name comparison
+#' @param indice_Gene
+#' @param indice_LogFC 
+#' @param indice_FDR 
+#' @param width width of the figure
+pretty_volcano <- function(file, name_ana, indice_Gene, indice_LogFC, indice_FDR, cutoff){
+  tt <- file
+  tt$Met <- as.vector(tt$Gene_name)
+  tt$color <- NA
+  print(ncol(tt))
+  print(tt)
+  for (i in 1:nrow(tt)){
+    if(tt[i, indice_LogFC] > cutoff & tt[i, indice_FDR] < 0.05){
+      print(tt[i, indice_Gene])
+      tt[i, ncol(tt)] <- "up_regulated"
+    }
+    if(tt[i, indice_LogFC] < -cutoff & tt[i, indice_FDR] < 0.05){
+      print(tt[i, indice_Gene])
+      tt[i, ncol(tt)] <- "down_regulated"
+    }
+    if(tt[i, indice_FDR] > 0.05){
+      tt[i, ncol(tt)] <- "NS"
+      tt[i, indice_Gene] <- NA
+    }
+  }
+  print(tt)
+  tt$Met <- ifelse(tt$logFC > 0.6 | tt$logFC < -0.6, tt$Met, NA)
+  tt$color[is.na(tt$color)] <- "significant"
+  #tt$Gene_name[tt$color == "significant"] <- NA
+  cols <- c("up_regulated" = "#cc0000", "down_regulated" = "#1b3651", "NS" = "darkgrey", "significant" = "#ffff99")
+  print(tt)
+  tt$size <- abs(tt$logFC)
+  vol <- ggplot(tt, aes(x = logFC, y = -log10(adj.P.Val), fill = color, size = size))+ theme_classic()+ 
+  geom_point(alpha = 0.8, na.rm = T, shape = 21)+ 
+  theme(legend.title=element_text(size=2),legend.text=element_text(size=2),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(colour="black", size =25),
+        axis.text.y=element_text(colour="black", size=25),
+        axis.title.y = element_text(size=20), 
+        axis.title.x = element_text(size=20)) +
+  labs(x="Log2 Fold Change",y="-log10 (adj.P.Val)")+
+  geom_text_repel(aes(label = Met), size=3.5,label.size = 0.1, color = "black", xlim = c(NA, Inf),
+    # Do not repel from top or bottom edges.
+    ylim = c(-Inf, Inf))+   
+  scale_fill_manual(values = cols)
+
+  print(vol)
+  path_fig <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/results/figures/", name_ana, "_volcano_plot.pdf")
+  ggsave(path_fig, width = 6, height = 5)
+  return(tt)
+
+}
+```
+
+```{r}
+names(dge_lt)
+```
+
+
+```{r}
+dge_lt_aa <- dge_lt[dge_lt$Gene_name %in% aa,]
+dge_lt_tca <- dge_lt[dge_lt$Gene_name %in% tca,]
+```
+
+```{r}
+dge_mono$X.x <- NULL
+dge_mono_aa <- dge_mono[dge_mono$Gene_name %in% aa,]
+dge_mono_aa <- dge_mono_aa[,c(8, 1, 9, 2, 3, 4, 5, 6, 7)]
+
+dge_mono_tca <- dge_mono[dge_mono$Gene_name %in% tca,]
+dge_mono_tca <- dge_mono_tca[,c(8, 1, 9, 2, 3, 4, 5, 6, 7)]
+```
+
+
+
+
+```{r}
+tt <- pretty_volcano(dge_lt_aa, "LT_AA", 3, 4, 8, 0)
+tt <- pretty_volcano(dge_lt_tca, "LT_TCA", 3, 4, 8, 0)
+tt <- pretty_volcano(dge_mono_aa, "mono_AA", 3, 4, 8, 0)
+tt <- pretty_volcano(dge_mono_tca, "mono_tca", 3, 4, 8, 0)
+```
+
+

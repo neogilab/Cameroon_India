@@ -1,0 +1,1043 @@
+---
+title: "Targeted metabolomics"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+```{r}
+c_IN_ART <- "#FFB146"
+c_IN_VP <- "#FF8C00"
+c_IN_HC <- "#FFE7C7"
+```
+
+
+```{r}
+source("src/Cameroon/usefull_functions.R")
+source("src/Cameroon/ML.R")
+#library(xlsx)
+library(dplyr)
+```
+```{r}
+library(xlsx)
+```
+
+
+## load data
+```{r}
+data <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/targeted_metabolomics/Summary_all_projects.xlsx", 4)
+```
+
+```{r}
+names(data)
+```
+```{r}
+data <- data[c(1:123, 137:267, 281:371),c(4,5,13:39)]
+```
+
+```{r}
+data_test <- data
+```
+
+```{r}
+data_test$id <- paste0(data_test$customer.sample.Identifier, "_", data_test$treatment)
+```
+
+```{r}
+rownames(data_test) <- data_test$id
+condition <- data_test$treatment
+```
+
+```{r}
+data_test$customer.sample.Identifier <- NULL
+data_test$treatment <- NULL
+data_test$id <- NULL
+```
+```{r}
+data_test <- data.frame(t(data_test))
+```
+```{r}
+data_CM <- select(data_test, contains("CM"))
+data_CM_HC_ART <- select(data_CM, contains("Healthy"), contains("ART"))
+```
+
+```{r}
+data_CM_VP_ART <- select(data_CM, contains("Naive"), contains("ART"))
+data_CM_HC_VP <- select(data_CM, contains("Healthy"), contains("Naive"))
+```
+
+```{r}
+data_IN <- select(data_test, contains("IN"))
+data_IN_HC_ART <- select(data_IN, contains("Healthy"), contains("ART"))
+```
+
+```{r}
+data_IN_VP_ART <- select(data_IN, contains("Naive"), contains("ART"))
+data_IN_HC_VP <- select(data_IN, contains("Healthy"), contains("Naive"))
+```
+```{r}
+#' Run Man withney test between 2 conditions
+#'
+#' @param file 
+#' @param n_c1 number of samples in condition 1
+#' @param n_c2 number of samples in condition 2
+#' @param c1 name condition 1
+#' @param c2 name condition 2
+my_man_whithney <- function(data, n_c1, n_c2, c1, c2, file){
+  test_table <- data.frame(Accession = NA, Log2FC = NA, pvalue = NA, FDR = NA, Significance = NA)
+  n_c2_start <- n_c1 +1
+  n_c2_stop <- n_c1 + n_c2
+  print(n_c2_start)
+  print(n_c2_stop)
+  print(names(data)[1:n_c1])
+  print(names(data)[n_c2_start:n_c2_stop])
+  for (i in 1:nrow(data)){
+    a <- as.matrix(data[i, 1:n_c1])
+    b <- as.matrix(data[i, n_c2_start:n_c2_stop])
+    ts <- wilcox.test(a, b)
+    test_table[i, 3] <- ts$p.value
+    test_table[i, 2] <- log2((sum(b)/n_c2)/(sum(a)/n_c1))
+    test_table[i, 1] <- rownames(data)[i]
+  }
+  #
+  test_table$FDR <- p.adjust(test_table$pvalue, method = "fdr")
+  test_table$Significance <- ifelse(test_table$FDR < 0.1, "SIGN", "NS")
+  name <- paste0(c1, "_vs_", c2, "_Man_whitney_test_results")
+  print(name)
+  save_file_excel(test_table, name, paste0("results/", file,"/Man_whithney/"))
+  save_file_csv(test_table, name, paste0("results/", file,"/Man_whithney/"))
+  test_table <- test_table[complete.cases(test_table), ]
+  test_table_2 <- test_table[test_table$FDR < 0.1, ]
+  print(nrow(test_table_2))
+  test_table_2$Significance <- ifelse(test_table_2$Log2FC < 0, paste0("downregulated in ", c2), paste0("upregulated in ", c2))
+  name <- paste0(c1, "_vs_", c2, "_Man_whitney_test_results_filtered")
+  save_file_csv(test_table_2, name, paste0("results/", file,"/Man_whithney/"))
+  save_file_excel(test_table_2, name, paste0("results/", file,"/Man_whithney/"))
+  return(test_table)
+}
+```
+
+```{r}
+name_ana <- "Cameroon_India"
+```
+
+```{r}
+HC_ARTcomp_test_CM <- my_man_whithney(data_CM_HC_ART, 48, 50, "HC", "ART", "Cameroon")
+names(HC_ARTcomp_test_CM)[c(2,4)] <- c("Log2FC(ART-HC) CM", "FDR(ART-HC) CM")
+
+VP_ARTcomp_test_CM <- my_man_whithney(data_CM_VP_ART, 25, 50, "Naive", "ART", "Cameroon")
+names(VP_ARTcomp_test_CM)[c(2,4)] <- c("Log2FC(ART-VP) CM", "FDR(ART-VP) CM")
+
+HC_VPcomp_test_CM <- my_man_whithney(data_CM_HC_VP, 48, 25, "HC", "Naive", "Cameroon")
+names(HC_VPcomp_test_CM)[c(2,4)] <- c("Log2FC(HC-VP) CM", "FDR(HC-VP) CM")
+```
+
+```{r}
+HC_ARTcomp_test_IN <- my_man_whithney(data_IN, 30, 41, "HC", "ART", "India")
+names(HC_ARTcomp_test_IN)[c(2,4)] <- c("Log2FC(ART-HC) IN", "FDR(ART-HC) IN")
+
+VP_ARTcomp_test_IN <- my_man_whithney(data_IN_VP_ART, 20, 41, "Naive", "ART", "India")
+names(VP_ARTcomp_test_IN)[c(2,4)] <- c("Log2FC(ART-VP) IN", "FDR(ART-VP) IN")
+
+HC_VPcomp_test_IN <- my_man_whithney(data_IN_HC_VP, 30, 20, "HC", "Naive", "India")
+names(HC_VPcomp_test_IN)[c(2,4)] <- c("Log2FC(HC-VP) IN", "FDR(HC-VP) IN")
+```
+```{r}
+table_man <- merge(HC_ARTcomp_test_CM, VP_ARTcomp_test_CM, by = "Accession")
+
+table_man <- merge(table_man, HC_VPcomp_test_CM, by = "Accession")
+
+table_man <- merge(table_man, HC_ARTcomp_test_IN, by = "Accession")
+
+table_man <- merge(table_man, VP_ARTcomp_test_IN, by = "Accession")
+
+table_man <- merge(table_man, HC_VPcomp_test_IN, by = "Accession")
+```
+
+```{r}
+names(table_man)[1] <- "metabolites"
+```
+
+```{r}
+names(table_man)
+```
+
+
+```{r}
+table_man <- table_man[, c(1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24)]
+```
+
+```{r}
+data$condition <- NA
+```
+
+```{r}
+data$condition[1:123] <- paste0("CM_", data$treatment[1:123])
+data$condition[124:214] <- paste0("IN_", data$treatment[124:214])
+```
+```{r}
+table <- select(data, customer.sample.Identifier, treatment, condition)
+```
+```{r}
+data_boxplot <- data
+```
+
+```{r}
+names(data_boxplot)
+```
+
+```{r}
+met <- gsub("\\.\\..*", "", names(data_boxplot)[-c(1, 2, 28)])
+```
+
+```{r}
+names(data_boxplot)
+```
+
+```{r}
+data_boxplot$cohort <- ifelse(grepl("CM", data_boxplot$customer.sample.Identifier, fixed = TRUE), "Cameroon", "India")
+```
+
+```{r}
+data_boxplot$treatment_2 <- ifelse(data_boxplot$treatment == "Healthy", "a", data_boxplot$treatment)
+data_boxplot$treatment_2 <- ifelse(data_boxplot$treatment == "ART", "b", data_boxplot$treatment_2)
+data_boxplot$treatment_2 <- ifelse(data_boxplot$treatment == "Naive", "c", data_boxplot$treatment_2)
+```
+
+```{r}
+data_boxplot[, 3:27]
+```
+
+```{r}
+write.csv(data_boxplot, "processing/targeted_metabolomics_Amino_acids.csv")
+```
+
+```{r}
+met
+```
+```{r}
+HC_ARTcomp_test_CM <- HC_ARTcomp_test_CM[HC_ARTcomp_test_CM$`FDR(ART-HC) CM` < 0.1,]
+HC_ARTcomp_test_IN <- HC_ARTcomp_test_IN[HC_ARTcomp_test_IN$`FDR(ART-HC) IN` < 0.1,]
+```
+
+```{r}
+sign_cameroon <- table_man$metabolites[(table_man$metabolites %in% HC_ARTcomp_test_CM$Accession) & !(table_man$metabolites %in% HC_ARTcomp_test_IN$Accession)]
+sign_india <- table_man$metabolites[table_man$metabolites %in% HC_ARTcomp_test_IN$Accession & !(table_man$metabolites %in% HC_ARTcomp_test_CM$Accession)]
+sign <- table_man$metabolites[table_man$metabolites %in% HC_ARTcomp_test_CM$Accession & table_man$metabolites %in% HC_ARTcomp_test_IN$Accession]
+```
+
+```{r}
+data_sign <- data_boxplot[colnames(data_boxplot) %in% sign]
+colnames(data_sign) <- gsub("\\.\\..*", "", colnames(data_sign))
+```
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+```{r}
+c_IN_ART <- "#FFB146"
+c_IN_VP <- "#FF8C00"
+c_IN_HC <- "#FFE7C7"
+```
+
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+```{r}
+c_border_IN_HC <- "#ccb89f"
+c_border_IN_ART <- "#cc8d38"
+c_border_IN_VP <- "#cc7000"
+```
+
+```{r}
+data_boxplot$condition <- factor(data_boxplot$condition, levels = c("CM_Healthy","CM_ART","CM_Naive","IN_Healthy","IN_ART","IN_Naive"))
+data_boxplot$treatment <- factor(data_boxplot$treatment, levels = c("Healthy","ART","Naive"))
+```
+
+
+```{r}
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,1], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = "Glutamate (pmol/uL plasma)")+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"),axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, position=position_jitter(0.2),color = "#323437", size = 2) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP")) +
+  scale_y_continuous(limits = quantile(data_sign[,1], c(0.1, 0.9)))+ coord_cartesian(ylim = c(0, 300))
+ggsave("results/figures/glutamate_aa_targeted.pdf")
+
+b <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,2], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE) +theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[2], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, color = "#323437", size = 2, position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP"))+
+  scale_y_continuous(limits = quantile(data_sign[,2], c(0.1, 0.9)))+ coord_cartesian(ylim = c(49, 170))
+ggsave("results/figures/Threonine_aa_targeted.pdf")
+  
+c <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,3], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE)+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[3], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+geom_jitter(shape=16, size=2, color="#323437", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP"))+
+  scale_y_continuous(limits = quantile(data_sign[,3], c(0.1, 0.9)))+ coord_cartesian(ylim = c(12, 32))
+ggsave("results/figures/Methionine_aa_targeted.pdf")
+  
+d <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,4], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE) +theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[4], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=2, color="#323437", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP"))+ coord_cartesian(ylim = c(50, 400))
+ggsave("results/figures/Valine_aa_targeted.pdf")
+  
+e <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 5], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE) +theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[5], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=2, color="#323437", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP"))+
+  scale_y_continuous(limits = quantile(data_sign[,5], c(0.1, 0.9)))+ coord_cartesian(ylim = c(40, 90))
+ggsave("results/figures/Phenylalanine_aa_targeted.pdf")
+  
+
+f <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 6], fill = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(lwd=0.75, outlier.shape = NA, notch=TRUE) +theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[6], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.text.y = element_text(colour="black", size = 25), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=2, color="#323437", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "Healthy" = "HC",
+                              "CM_Naive" = "VP"))+ coord_cartesian(ylim = c(0, 100))
+ggsave("results/figures/Tryptophane_aa_targeted.pdf")
+```
+
+```{r}
+list_figures <- list(a, b, c, d,e, f)
+```
+
+```{r}
+j <- matrix(1:6, nrow = 2, ncol = 3)
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+pdf("results/figures/AA_boxplots_plots_overlap_2.pdf", height = 17, width = 22)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+## VIOLIN
+
+```{r}
+
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,1], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = "Glutamate (pmol/uL plasma)")+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, position=position_jitter(0.2),color = "black", size = 3) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+
+
+
+
+b <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,2], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[2], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, color = "black", size = 3, position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+
+
+c <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,3], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[3], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+d <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,4], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[4], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+e <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 5], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[5], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+
+f <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 6], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[6], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+```
+
+```{r}
+list_figures <- list(a, b, c, d,e, f)
+```
+
+```{r}
+j <- matrix(1:6, nrow = 2, ncol = 3)
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+pdf("results/figures/AA_boxplots_plots_overlap_violon_plot.pdf", height = 17, width = 22)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+
+## INDIA
+
+```{r}
+data_sign <- data_boxplot[colnames(data_boxplot) %in% sign_india]
+colnames(data_sign) <- gsub("\\.\\..*", "", colnames(data_sign))
+```
+
+```{r}
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,1], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[1])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+b <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,2], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[2])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+c <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,3], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[3])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+d <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,4], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[4])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+e <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,5], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[5])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+f <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,6], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[6])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+g <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,7], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[7])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+```
+
+```{r}
+list_figures <- list(a, b, c, d, e, f, g)
+```
+
+```{r}
+j <- matrix(1:9, nrow = 3, ncol = 3)
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+pdf("results/figures/AA_boxplots_plots_india.pdf", height = 7, width = 10)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+```{r}
+data_sign <- data_boxplot[colnames(data_boxplot) %in% sign_cameroon]
+colnames(data_sign) <- gsub("\\.\\..*", "", colnames(data_sign))
+```
+
+```{r}
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,1], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[1])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+b <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,2], fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0(colnames(data_sign)[2])) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+```
+
+```{r}
+list_figures <- list(a, b)
+```
+
+```{r}
+j <- matrix(1:2, nrow = 1, ncol = 2)
+```
+
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), log2(data_sign[,1]), fill = as.factor(data_boxplot[,28]), color = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8)+ 
+    theme_bw() +
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="Condition", y = paste0("Log2(", colnames(data_sign)[1],")")) + 
+    theme(axis.title.x = element_blank(),axis.title.y = element_text(size=9),axis.text = element_text(color="black",size=9),plot.title = element_text(hjust = 0.5,size = 9), axis.text.x =element_blank(), panel.border = element_blank(), axis.ticks.x = element_blank(), strip.text.x = element_text(size = 9,color="black"), legend.position = "none") + 
+    geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+
+```{r}
+a <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,1], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = "Glutamate (pmol/uL plasma)")+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, position=position_jitter(0.2),color = "black", size = 3) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+
+b <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,2], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[2], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ geom_jitter(shape=16, color = "black", size = 3, position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+c <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,3], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[3], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+d <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[,4], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[4], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+e <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 5], fill = as.factor(data_boxplot[,28]))) + 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[5], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+  
+
+f <- ggplot(data_sign, aes(as.factor(data_boxplot[,2]), data_sign[, 6], fill = as.factor(data_boxplot[,28])))+ 
+    geom_violin(position=position_dodge(1), size = 0.5, alpha =0.8) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+theme_grey()+
+  facet_wrap(~data_boxplot[,29])+ 
+    labs(x="", y = paste0(colnames(data_sign)[6], " (pmol/uL plasma)"))+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"), legend.position = "none")+ 
+    geom_jitter(shape=16, size=3, color="black", position=position_jitter(0.2)) + scale_fill_manual(values=c(c_CM_HC, c_CM_ART, c_CM_VP, c_IN_HC, c_IN_ART, c_IN_VP))+ scale_color_manual(values=c(c_border_CM_HC, c_border_CM_ART,  c_border_CM_VP, c_border_IN_HC, c_border_IN_ART,  c_border_IN_VP))+
+    scale_x_discrete(labels=c("CM_ART" = "ART", "CM_Healthy" = "HC",
+                              "CM_Naive" = "VP"))
+```
+
+```{r}
+list_figures <- list(a, b, c, d,e, f)
+```
+
+```{r}
+j <- matrix(1:6, nrow = 2, ncol = 3)
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+pdf("results/figures/AA_boxplots_plots_overlap_violon_plot.pdf", height = 17, width = 22)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+```{r}
+require(gridExtra)
+```
+
+```{r}
+pdf("results/figures/AA_boxplots_plots_Cameroon.pdf", height = 2, width = 5)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+```{r}
+library(ggpubr)
+```
+
+
+```{r}
+sign_cameroon <- table_man$metabolites[(table_man$metabolites %in% HC_ARTcomp_test_CM$Accession)]
+sign_india <- table_man$metabolites[table_man$metabolites %in% HC_ARTcomp_test_IN$Accession]
+```
+
+
+
+## UMAP Cameroon
+
+```{r}
+library(umap)
+```
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+```{r}
+c_border_IN_HC <- "#ccb89f"
+c_border_IN_ART <- "#cc8d38"
+c_border_IN_VP <- "#cc7000"
+```
+
+
+```{r}
+data_u <- data
+data_u$customer.sample.Identifier <- NULL
+data_u$treatment <- NULL
+data_u$condition
+
+data_u[, -26] <- log2(data_u[, -26])
+```
+
+
+```{r}
+met.umap = umap(data_u[, -26])
+met.labels = data_u$condition
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[26:27] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 3, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_CM_ART,c_border_CM_HC,c_border_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))+ scale_fill_manual(name = "Condition", values=c(c_CM_ART,c_CM_HC,c_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))
+
+ggsave("results/figures/targeted_metabolomics_aa_umap.pdf")
+```
+
+```{r}
+library(ropls)
+```
+
+
+```{r}
+x <- data_u[, -26]
+y <- met.labels
+```
+
+```{r}
+# apply it
+x_scaled <- scale(x)
+
+#2. unit-variance scalling
+
+path_fig <- paste0("results/figures/PLS-DA_aa_all.pdf")
+pdf(path_fig)
+met.plsda <- opls(x, y)
+dev.off()
+```
+```{r}
+ropls.plot(met.plsda, plottype = "score", xvar = "p1", yvar = "p2", hotelling = FALSE,
+  ellipse = FALSE, col.var = NULL, col.pca = NULL)
+ggsave("results/figures/PLS-DA_aa_whole.pdf", width = 10, height = 10)
+```
+
+```{r}
+met.data = data_u[data_u$condition == "CM_Healthy" | data_u$condition == "CM_ART",]
+met.labels = met.data$condition
+
+met.data <- met.data[,colnames(met.data) %in% sign]
+```
+
+```{r}
+pca_data <- data.frame(group = met.labels, met.data)
+```
+
+```{r}
+pca_data[is.na(pca_data)] <-  0
+pca <- prcomp(pca_data[,-1])
+```
+
+```{r}
+df_out <- as.data.frame(pca$x)
+df_out$group <- pca_data$group
+head(df_out)
+```
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, fill = group ,color = group))+ geom_point(size = 5, alpha = 0.9, shape = 21, color = "black")+
+  stat_ellipse(geom = "polygon", alpha = 0.1, aes(fill = group))+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(name = "Condition", values = c(c_border_CM_ART,c_border_CM_HC,c_border_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))+ scale_fill_manual(name = "Condition", values=c(c_CM_ART,c_CM_HC,c_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))
+
+path_fig <- paste0("results/figures/PCA_cameroon_aa_overlap.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[7:8] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 3, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_CM_ART,c_border_CM_HC,c_border_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))+ scale_fill_manual(name = "Condition", values=c(c_CM_ART,c_CM_HC,c_CM_VP, c_IN_ART, c_IN_HC, c_IN_VP))+
+  stat_ellipse(linetype = 1, aes(color = Condition))
+
+ggsave("results/figures/targeted_metabolomics_super_vized_overlap_umap_cameroon_aa.pdf")
+```
+
+## India
+```{r}
+met.data = data[data_u$condition == "IN_Healthy" | data_u$condition == "IN_ART",]
+met.labels = met.data$condition
+met.data <- met.data[,colnames(met.data) %in% sign]
+```
+
+```{r}
+pca_data <- data.frame(group = met.labels, met.data)
+```
+
+```{r}
+pca_data[is.na(pca_data)] <-  0
+pca <- prcomp(pca_data[,-1])
+```
+
+```{r}
+df_out <- as.data.frame(pca$x)
+df_out$group <- pca_data$group
+head(df_out)
+```
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, fill = group ,color = group))+ geom_point(size = 5, alpha = 0.9, shape = 21, color = "black")+
+  stat_ellipse(geom = "polygon", alpha = 0.1, aes(fill = group))+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(name = "Condition", values = c(c_IN_ART, c_IN_HC, c_IN_VP))+ scale_fill_manual(name = "Condition", values=c(c_IN_ART, c_IN_HC, c_IN_VP))
+
+path_fig <- paste0("results/figures/PCA_india_aa_overlap.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+
+```{r}
+met.umap = umap(met.data)
+met.umap
+```
+
+```{r}
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[7:8] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 3, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_IN_ART, c_border_IN_HC, c_border_IN_VP))+ scale_fill_manual(name = "Condition", values=c(c_IN_ART, c_IN_HC, c_IN_VP))+
+  stat_ellipse(linetype = 1, aes(color = Condition))
+
+ggsave("results/figures/targeted_metabolomics_supervized_overlap_umap_india_aa.pdf")
+```
+
+```{r}
+table(data_boxplot$condition)
+```
+
+```{r}
+data_boxplot <- data_boxplot[order(data_boxplot$condition),]
+```
+
+```{r}
+names(data_boxplot)
+```
+
+```{r}
+data_4 <- data_boxplot[,3:27]
+```
+```{r}
+met
+```
+
+```{r}
+names(data_4) <- met
+```
+```{r}
+data_4 <- t(data_4)
+```
+
+```{r}
+data_4 <- log2(data_4)
+```
+```{r}
+data_4 <- t(scale(t(data_4)))
+```
+
+
+
+
+## Ven diagram India / Cameroon 
+
+```{r}
+data_sign <- table_man[(table_man$`FDR(ART-HC) CM` < 0.1 & table_man$`FDR(ART-HC) IN` < 0.1),]
+```
+
+
+```{r}
+write.csv(table_man, "results/summary-man_withey_targeted_metabolites_India_Cameroon.csv")
+write.csv(data_sign, "results/man_withey_targeted_metabolites_India_Cameroon_overlap_significant_HC_ART.csv")
+```
+
+```{r}
+table_man$`Log2FC(ART-HC) CM`[table_man$`FDR(ART-HC) CM` > 0.1] <- NA
+table_man$`Log2FC(ART-VP) CM`[table_man$`FDR(ART-VP) CM` > 0.1] <- NA
+table_man$`Log2FC(HC-VP) CM`[table_man$`FDR(HC-VP) CM` > 0.1] <- NA
+
+table_man$`Log2FC(ART-HC) IN`[table_man$`FDR(ART-HC) IN` > 0.1] <- NA
+table_man$`Log2FC(ART-VP) IN`[table_man$`FDR(ART-VP) IN` > 0.1] <- NA
+table_man$`Log2FC(HC-VP) IN`[table_man$`FDR(HC-VP) IN` > 0.1] <- NA
+```
+
+
+```{r}
+names <- met
+```
+
+```{r}
+library(circlize)
+```
+
+```{r}
+col_fun_2 = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+```
+
+```{r}
+col_fun = colorRamp2(c(-2, 0, 2), c("green", "white", "red"))
+```
+
+```{r}
+library(ComplexHeatmap)
+```
+
+
+```{r}
+pdf("results/figures/Legend_heatmap_Amino_acids.pdf")
+lgd = Legend(col_fun = col_fun_2, title = "LFC", grid_width = unit(0.5, "cm"))
+draw(lgd, x = unit(0.5, "npc"), y = unit(0.5, "npc"))
+dev.off()
+```
+```{r}
+data_5 <- data.frame(data_4)
+```
+```{r}
+colnames(data_5) <- paste0(data_boxplot$condition,"_" ,c(1:50, 1:48, 1:25, 1:41, 1:30, 1:20))
+```
+```{r}
+table_man <- select(table_man, metabolites, contains("Log2FC"))
+table_man$metabolites <- gsub("\\.\\..*", "", table_man$metabolites)
+names(data_5)
+```
+```{r}
+data_5$metabolites <- rownames(data_5)
+```
+
+```{r}
+data_6 <- merge(data_5, table_man, by = "metabolites")
+```
+
+```{r}
+data_cameroon <- as.matrix(select(data_6, contains("CM")))
+rownames(data_cameroon) <- data_6$metabolites
+```
+
+```{r}
+data_india <- as.matrix(select(data_6, contains("IN")))
+rownames(data_india) <- data_6$metabolites
+```
+
+## make ven diagram
+```{r}
+library(eulerr)
+```
+```{r}
+pdf("results/figures/Ven_diagram_aa_targeted.pdf")
+VennDiag <- euler(c("Cameroon" = 2, "India" = 7, "Cameroon&India" = 6))
+plot(VennDiag, counts = TRUE, font=1, cex=1, alpha=0.5,
+     fill=c(c_CM_ART, c_IN_ART,"cornsilk4"), quantities = TRUE)
+dev.off()
+```
+```{r}
+col_fun1 = colorRamp2(c(-10, -2,0, 2,10), c("#004C00","#008000","white","#E50000","#7F0000"))
+```
+
+```{r}
+max(data_india[,-c(92,93,94)])
+min(data_india[,-c(92,93,94)])
+```
+
+
+```{r}
+pdf("results/figures/AA_complex_heatmap_India.pdf", width = 18, height = 8)
+ht = Heatmap(data_india[,-c(92,93,94)], col = col_fun1, column_order = sort(colnames(data_india)[-c(92,93,94)]), show_column_names = FALSE, column_split = data_boxplot$condition[-c(1:123)], column_title = unique(data_boxplot$condition[-c(1:123)]), 
+             column_title_gp = gpar(fill = c(c_IN_ART, c_IN_HC, c_IN_VP)), border = FALSE, column_gap = unit(2, "mm"), , 
+             right_annotation = rowAnnotation(IN_HC_ART = data_india[,"Log2FC(ART-HC) IN"],
+                                              IN_VP_ART = data_india[,"Log2FC(ART-VP) IN"],
+                                              IN_HC_VP = data_india[,"Log2FC(HC-VP) IN"],
+                                              col = list(IN_HC_ART = col_fun_2, IN_VP_ART = col_fun_2, IN_HC_VP = col_fun_2), show_legend = FALSE), row_labels = rownames(data_india))
+draw(ht)
+dev.off()
+```
+
+```{r}
+names(data_cameroon)
+```
+
+```{r}
+pdf("results/figures/AA_complex_heatmap_Cameroon.pdf", width = 18, height = 8)
+ht = Heatmap(data_cameroon[,-c(124,125,126)], col = col_fun1, column_order = sort(colnames(data_cameroon[-c(124,125,126)])), show_column_names = FALSE, column_split = data_boxplot$condition[c(1:123)], column_title = unique(data_boxplot$condition[c(1:123)]), 
+             column_title_gp = gpar(fill = c(c_CM_ART,c_CM_HC,c_CM_VP)), border = FALSE, column_gap = unit(2, "mm"),
+             right_annotation = rowAnnotation(CM_HC_ART = data_cameroon[,"Log2FC(ART-HC) CM"],
+                                              CM_VP_ART = data_cameroon[,"Log2FC(ART-VP) CM"],
+                                              CM_HC_VP = data_cameroon[,"Log2FC(HC-VP) CM"],
+                                              col = list(CM_HC_ART = col_fun_2, CM_VP_ART = col_fun_2, CM_HC_VP = col_fun_2), show_legend = FALSE),
+             row_labels = rownames(data_cameroon))
+draw(ht)
+dev.off()
+```
+
+
+

@@ -1,0 +1,179 @@
+---
+title: "figure 1 Cameroon India"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(umap)
+library(dplyr)
+library(ggplot2)
+library(xlsx)
+```
+
+1) stacked bar plot (instead of donuts) all, p value, FDR horizontal
+2) umap FDR < 0.1
+3) small network FDR with pathways + subpathway
+
+
+```{r}
+c_CM_ART <- "#0080FF"
+c_CM_VP <- "#0000FF"
+c_CM_HC <- "#A2C0D9"
+```
+
+
+```{r}
+c_border_CM_HC <- "#8199ad"
+c_border_CM_ART <- "#0066cc"
+c_border_CM_VP <-"#0000cc"
+```
+
+
+
+## load files
+```{r}
+path <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_metabolites_info.csv")
+names(path)
+path <- select(path, SUPER.PATHWAY, BIOCHEMICAL)
+path <- path[!path$SUPER.PATHWAY == "", ]
+
+
+met <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Man_whithney/Cameroon_HC_vs_ART_Man_whitney_test_results.csv")
+met <- met[!is.na(met$FDR),]
+ipa <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/src/extra/Cameroon_2.2/results/IPA/man_withney_ipa_pvalue_0.05.xlsx",1)
+```
+
+Set limits
+```{r}
+met_FDR <- met[met$FDR < 0.1,]
+met_pval <- met[met$pvalue < 0.05,]
+```
+
+
+## Donut 1 (all metabolites)
+
+## Count numbers per categorie
+```{r}
+d1 <- path
+d1$BIOCHEMICAL <- NULL
+d1 <- data.frame(table(d1))
+#d1 <- d1[-1, ]
+colnames(d1) <- c("Category", "count")
+d1$fraction = d1$count / sum(d1$count)
+d1 <- cbind(d1, condition = "Total, n = 841")
+sum(d1$count)
+```
+
+```{r}
+d2 <- path[path$BIOCHEMICAL %in% met_pval$Accession,]
+d2$BIOCHEMICAL <- NULL
+d2 <- data.frame(table(d2))
+#d2 <- d2[-1, ]
+colnames(d2) <- c("Category", "count")
+d2$fraction = d2$count / sum(d2$count)
+d2 <- cbind(d2, condition = "pvalue < 0.05, n = 122")
+sum(d2$count)
+```
+
+```{r}
+d3 <- path[path$BIOCHEMICAL %in% met_FDR$Accession,]
+d3$BIOCHEMICAL <- NULL
+d3 <- data.frame(table(d3))
+#d3 <- d3[-1, ]
+colnames(d3) <- c("Category", "count")
+d3$fraction = d3$count / sum(d3$count)
+d3 <- cbind(d3, condition = "FDR < 0.1, n = 42")
+sum(d3$count)
+```
+
+
+```{r}
+names(d1)
+```
+
+```{r}
+d4 <- rbind(d1, d2, d3)
+```
+
+```{r}
+library(scales)
+```
+
+```{r}
+mycols <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+```
+
+```{r}
+d4$condition <- factor(d4$condition, levels = c("FDR < 0.1, n = 42", "pvalue < 0.05, n = 122", "Total, n = 841"))
+```
+
+
+```{r}
+d4$Category <- factor(d4$Category, levels = rev(levels(d4$Category)))
+```
+
+```{r}
+ggplot(d4, aes(fill=Category, y=fraction, x=condition)) + 
+    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
+  labs(x="Disease status",y="Comorbidities frequency")+
+    scale_fill_manual(values = rev(mycols))+
+  geom_text(aes(label=ifelse(fraction >= 0.07, paste0("n = ", count, ", \n", round(fraction, 2), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y="", x="")
+
+ggsave("results/figures/barplot_number_pathways_UPDATED.pdf", width = 9, height = 3)
+```
+
+## UMAP
+```{r}
+data_cameroon <- read.csv("processing/data_with_clinical_data.csv", header = TRUE, row.names = 2)
+data_cameroon$X <- NULL
+
+convert_cameroon <- read.csv("processing/Cameroon/Cameroon_conversion_table_metabolomics.csv", header = TRUE)
+convert_cameroon_FDR <- convert_cameroon[convert_cameroon$metabolites %in% met_FDR$Accession,]
+data_cameroon <- data_cameroon[,colnames(data_cameroon) %in% convert_cameroon_FDR$X.1]
+#data_cameroon <- log2(data_cameroon)
+data_cameroon <- scale(data_cameroon)
+```
+
+```{r}
+met.umap = umap(data_cameroon)
+met.umap
+met.labels = c(rep("ART", 24),rep("HC", 24))
+```
+
+```{r}
+data_2 <- met.umap$data
+layout <- met.umap$layout
+
+data_umap <- cbind(data_2, layout)
+colnames(data_umap)[43:44] <- c("UMAP1", "UMAP2")
+data_umap <- data.frame(data_umap)
+```
+
+"#0080FF" ; ART
+"#A2C0D9" ; HC
+
+```{r}
+## to save as pdf
+#extrafont::loadfonts()
+data_umap %>% 
+  mutate(Condition = met.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 6, shape = 21, aes(fill = factor(met.labels), color = factor(met.labels)))+ scale_color_manual(name = "Condition", values = c(c_border_CM_ART, c_border_CM_HC))+ scale_fill_manual(name = "Condition", values=c(c_CM_ART, c_CM_HC))+
+  stat_ellipse(linetype = 1, aes(color = Condition))
+
+ggsave("results/figures/umap_cameroon_FDR<0.1_scaled.pdf", width = 6, height = 5)
+```
+## Network
+## 42 metabolites with pathways and subpathways
+```{r}
+
+```
+

@@ -1,0 +1,386 @@
+---
+title: "IPA analysis"
+output: html_notebook
+---
+
+/home/ujjwal/Desktop/Code-PHD/Cameroon_2/data/IPA/IPA disease and biofunction.xlsx
+/home/ujjwal/Desktop/Code-PHD/Cameroon_2/data/IPA/IPA Tox Function.txt
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(GOplot)
+library(RColorBrewer)
+```
+
+### Parse files
+```{r}
+ipa_disease <- read.xlsx("data/IPA/IPA disease and biofunction.xlsx", 1)
+```
+
+### bubble plot
+
+#### filter on zscores
+```{r}
+ipa_disease <- ipa_disease[ipa_disease$Activation.z.score != " ", ]
+
+## change zscore (+/-)
+
+ipa_disease$Activation.z.score <- as.numeric(as.vector(ipa_disease$Activation.z.score))
+
+ipa_disease$Activation.z.score <- -ipa_disease$Activation.z.score
+```
+
+```{r}
+ipa_disease$significant <- NA
+```
+
+```{r}
+names(ipa_disease)
+```
+
+# attribute up or down according to logFC
+
+```{r}
+for (i in 1:nrow(ipa_disease)){
+  if(ipa_disease[i,5] > 0){
+    ipa_disease[i,9] <- "pos"
+  }else{
+    ipa_disease[i,9] <- "neg"
+  }
+  if(ipa_disease[i,3] > 0.05){
+    ipa_disease[i,9] <- "NS"
+  }
+
+}
+```
+
+```{r}
+top_genes <- ipa_disease[ipa_disease$Check == 1, ]
+
+dim(top_genes)
+# remove label for proteins with  - 1 < logFoldChange < 1
+for (nb_row in 1:nrow(ipa_disease)){
+  if (ipa_disease[nb_row, 2] %in% top_genes$Diseases.or.Functions.Annotation){
+    }else{
+      ipa_disease[nb_row, 2] <- NA
+  }
+}
+```
+
+```{r}
+library(ggrepel)
+fill <- c("#5CB3FF","#b30000")
+```
+
+"#C0C0C0"
+```{r}
+names(ipa_disease)
+```
+
+```{r}
+p6 <- ggplot(ipa_disease, aes(x = -log10(p.value), y = Activation.z.score,  size = X..Molecules, label = Diseases.or.Functions.Annotation)) +
+        #geom_text(check_overlap = TRUE, size = 3, nudge_y = 0.7, vjust="inward",hjust="inward") +
+        geom_point(aes(colour=significant, fill=significant), shape = 21, alpha = 0.7)+ scale_size_area(max_size = 10) + geom_label_repel(aes(label = Diseases.or.Functions.Annotation),size=3.5,label.size = 0.1,box.padding=0.5) + 
+  theme(legend.title=element_text(size=8),legend.text=element_text(size=6),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=9),axis.title.x=element_text(size=9),
+        axis.text.y=element_text(size=7),axis.text.x=element_text(size=7))+
+        ggtitle("Important Diseases and Functions enriched according to z-score, pvalue and number of genes") +
+            labs(x = "-log(pvalue)", y = "z-score")+ 
+      scale_fill_manual(name = "Significance", values=fill) + scale_color_manual(name = "Significance", values = fill)
+```
+
++ geom_label_repel(aes(label = Diseases.or.Functions.Annotation),size=3.5,label.size = 0.1,box.padding=0.5) + 
+  theme(legend.title=element_text(size=8),legend.text=element_text(size=6),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=9),axis.title.x=element_text(size=9),
+        axis.text.y=element_text(size=7),axis.text.x=element_text(size=7))
+        
+        
+```{r}
+p6
+
+path_fig <- paste0("results/Cameroon/figures/IPA_bubble_plot.pdf")
+ggsave(path_fig, width = 10, height = 12)
+```
+
+### chord plot
+
+```{r}
+ipa_disease <- ipa_disease[complete.cases(ipa_disease),]
+```
+
+```{r}
+m <- list()
+```
+
+```{r}
+### extract metabolites
+for (i in 1:nrow(ipa_disease)){
+  x <- paste0(ipa_disease$Molecules[i], collapse=" ")
+  y <- as.list(strsplit(x, ",")[[1]])
+  m <- c(y, m)
+}
+```
+
+```{r}
+met_data <- data.frame(Accession = NA)
+```
+
+```{r}
+metabolites <- unique(m)
+
+for(i in 1:28){
+  met_data[i,1] <- metabolites[[i]]
+}
+```
+
+```{r}
+met_data$Metabolites <- met_data$Accession
+```
+
+```{r}
+met_data[2,1] <- "cystine"
+met_data[3,1] <- "glutamate"
+met_data[4,1] <- "palmitoyl ethanolamide"
+met_data[5,1] <- "phosphoethanolamine (PE)"
+met_data[6,1] <- "efavirenz"
+met_data[7,1] <- "sphingosine 1-phosphate"
+met_data[11,1] <- "sphingosine"
+met_data[12,1] <- "arginine"
+met_data[13,1] <- "methionine"
+met_data[14,1] <- "nicotinamide"
+met_data[15,1] <- "perfluorooctanoate (PFOA)"
+met_data[16,1] <- "succinate"
+met_data[17,1] <- "thymol sulfate"
+met_data[19,1] <- "hydroxy-CMPF*"
+met_data[20,1] <- "fumarate"
+met_data[22,1] <- "orotidine"
+met_data[23,1] <- "valerate (5:0)"
+met_data[24,1] <- "5alpha-androstan-3beta.17beta-diol disulfate"
+met_data[25,1] <- "androsterone sulfate"
+met_data[26,1] <- "benzoate"
+met_data[28,1] <- "lactate"
+```
+
+```{r}
+length(m)
+```
+```{r}
+ipa_disease$Molecules <- as.vector(ipa_disease$Molecules)
+```
+
+## put back genes associated with each term
+```{r}
+for (i in 1:nrow(ipa_disease)){
+  x <- paste0(ipa_disease$Molecules[i], collapse=" ")
+  print(x)
+  y <- as.list(strsplit(x, ",")[[1]])
+  met_data_2 <- data.frame(Metabolites = NA)
+  for(j in 1:length(y)){
+    met_data_2[j,1] <- y[[j]]
+  }
+  met_data_3 <- merge(met_data, met_data_2, by = "Metabolites")
+  ipa_disease[i,6] <- paste0(met_data_3$Accession, collapse=",")
+  z <- as.list(strsplit(paste0(met_data_3$Accession, collapse=","), ",")[[1]])
+  print(paste0(met_data_3$Accession, collapse=","))
+  print(length(z))
+  print(ipa_disease[i, 7])
+  ipa_disease[i,7] <- length(z)
+}
+
+```
+
+```{r}
+names(ipa_disease)
+```
+```{r}
+ipa_disease <- select(ipa_disease, Diseases.or.Functions.Annotation, X..Molecules, Molecules, p.value)
+```
+
+```{r}
+names(ipa_disease)[1] <- "term"
+names(ipa_disease)[2] <- "nb_protein"
+names(ipa_disease)[3] <- "genes"
+names(ipa_disease)[4] <- "adj_pval"
+```
+
+```{r}
+up_12_F_2 <- data.frame(Node_1 = NA, Node_2 = NA)
+```
+
+```{r}
+for (i in 1:nrow(ipa_disease)){
+  x <- paste0(ipa_disease$genes[i], collapse=" ")
+  y <- as.list(strsplit(x, ",")[[1]])
+  path <- rep(ipa_disease[i, 1], length(y))
+  a <-do.call(rbind.data.frame, y)
+  names(a)<- "Node_1"
+  a <-cbind(a, path)
+  names(a)[2]<- "Node_2"
+  up_12_F_2 <-rbind(up_12_F_2, a)
+}
+```
+
+```{r}
+up_12_F_2 <- up_12_F_2[complete.cases(up_12_F_2),]
+input_table <- up_12_F_2
+input_table$freq <- seq(1,2*nrow(input_table), by=2)
+```
+
+
+```{r}
+A_col <- "#ffa12c"
+B_col <- "#ff872c"
+C_col <- "#fe612c"
+D_col <- "#fd3a2d"
+E_col <- "#f11d28"
+
+ggplot(input_table,
+       aes(weight = freq, axis1 = Node_1, axis2 = Node_2)) +
+  geom_alluvium(aes(fill = Node_2, color = Node_2), 
+                width = 1/12, alpha = 0.3, knot.pos = 0.4) +
+  geom_stratum(width = 1/36, fill = "black", color = "grey")+
+  scale_x_continuous(breaks = 1:2, labels = c("Proteins", "KEGG Terms")) + 
+  ggtitle("Pathway analysis") +
+  theme_minimal()+
+  geom_label(stat = "stratum", label.strata = TRUE, size=2)+
+  theme(legend.position = "none",
+        title = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size=12, face = "bold")) +
+  scale_fill_manual(values  = c(A_col, B_col, C_col, D_col, E_col)) +
+  scale_color_manual(values = c(A_col, B_col, C_col, D_col, E_col)) +
+
+ggsave("results/figures/sankey_plot_up_antiviral_proteins_2_top_5_pathways_up.pdf", width = 10, height = 10, limitsize = FALSE)
+```
+
+thymol sulfate
+succinate
+sphingosine 1-phosphate
+efavirenz
+phosphoethanolamine (PE)
+perfluorooctanoate (PFOA)
+valerate (5:0)
+palmitoyl ethanolamide
+orotidine
+nicotinamide
+methionine
+lactate
+glutamate
+cystine
+arginine
+fumarate
+sphingosine
+benzoate
+5alpha-androstan-3beta,17beta-diol disulfate
+hydroxy-CMPF*
+androsterone sulfate
+
+
+niacinamide (against aging)
+
+```{r}
+## load fold changes
+HC_ART_man_withney <- read.csv("results/Man_whithney/Cameroon_metabolon_HC_vs_ART_Man_whitney_test_results.csv")
+```
+
+```{r}
+data_met_2 <- merge(met_data, HC_ART_man_withney, by = "Accession", all.x = TRUE)
+```
+
+```{r}
+names(data_met_2)
+```
+
+```{r}
+DGE_table <- select(data_met_2, Accession, Log2FC, pvalue, FDR)
+```
+
+```{r}
+names(DGE_table)[1] <- "ID"
+names(DGE_table)[2] <- "logFC"
+names(DGE_table)[3] <- "P.Value"
+names(DGE_table)[4] <- "adj_pval"
+```
+
+```{r}
+library()
+```
+
+```{r}
+ipa_disease <- cbind(category = "IPA", ipa_disease)
+```
+
+```{r}
+circ <- circle_dat(ipa_disease, DGE_table)
+```
+```{r}
+DGE_table$ID <- toupper(DGE_table$ID)
+```
+
+```{r}
+circ <-circ[!is.na(circ$logFC),]
+```
+
+```{r}
+chord <- chord_dat(data = circ, genes = DGE_table[,1:2], process = ipa_disease$term)
+```
+
+```{r}
+rownames(chord) <- tolower(rownames(chord))
+rownames(chord)[19] <- "pfoa"
+rownames(chord)[20] <- "pe"
+rownames(chord)[22] <- "sphingosine 1-p"
+```
+
+```{r}
+green <- rev(c("#002714",
+             "#004b26",
+             "#006f38",
+             "#00934a",
+             "#00b75c",
+             "#00db6e",
+             "#24ff92",
+             "#48ffa4",
+             "#6cffb6",
+             "#90ffc8",
+             "#b4ffda",
+             "#d8ffec"))
+```
+
+```{r}
+my_palette <- colorRampPalette(c("#C0C0C0",green))(n=7)
+```
+
+```{r}
+GOChord(chord)
+```
+
+```{r}
+pdf("results/figures/circos_Disease.pdf", width=28.5, height=30,paper='special')
+GOChord(chord, space = 0.02, gene.order = 'logFC', gene.size = 7.8, border.size = NA, ribbon.col = my_palette, process.label = 25)
+dev.off()
+```
+
+3-beta,17-beta-androstanediol,benzoic acid,betaine,D-sphingosine,L-arginine,L-glutamic acid,L-lactic acid,L-methionine,niacinamide,orotic acid,perfluorooctanoic acid,S-efavirenz,sphingosine-1-phosphate,taurine"
+
+
+
+17beta-diol disulfate
+
+
+androsterone sulfate,5alpha-androstan-3beta,benzoate,betaine,sphingosine,arginine,glutamate,lactate,methionine,nicotinamide,orotidine,perfluorooctanoate (PFOA),efavirenz,sphingosine 1-phosphate,taurine
+
+
+```{r}
+
+```
+

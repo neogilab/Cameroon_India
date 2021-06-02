@@ -1,0 +1,299 @@
+---
+title: "verification metabolites environment"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+```
+
+## load table environment
+```{r}
+merged_info <- read.delim("/home/flomik/Desktop/Code-PHD/COCOMO_v2/data/verif_env/MergedAssocation.txt")
+original_file <- read.xlsx("/home/flomik/Desktop/Code-PHD/COCOMO_v2/data/verif_env/Metabolites_association.xlsx",1)
+```
+
+## load data
+```{r}
+data_cameroon <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Man_whithney/Cameroon_metabolon_HC_vs_ART_Man_whitney_test_results_filtered.xlsx", 1, header = TRUE)
+data_india <- read.delim("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/India/India_metabolites_welshTtwotest.txt")
+```
+
+```{r}
+info <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/India/India_convert_met_names.csv")
+```
+```{r}
+info2 <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_conversion_table_metabolomics.csv")
+```
+
+```{r}
+names(data_india)[2] <- "metabolites_2"
+```
+```{r}
+data_india$X <- NULL
+```
+
+```{r}
+data_india_2 <- merge(data_india, info, by = "metabolites_2", all.x = TRUE)
+```
+```{r}
+data_india_2$metabolites <- as.vector(data_india_2$metabolites)
+```
+
+```{r}
+names(info2)[3] <- "metabolites_2"
+info2$metabolites <- as.vector(info2$metabolites)
+info2$metabolites_2 <- as.vector(info2$metabolites_2)
+```
+```{r}
+data_india_3 <- merge(data_india_2, info2, by = "metabolites_2", all.x = TRUE)
+```
+
+```{r}
+data_india_3$metabolites.x <- ifelse(!is.na(data_india_3$metabolites.x), data_india_3$metabolites.x, data_india_3$metabolites.y)
+```
+```{r}
+data_india_3[99,3] <- "4-methylbenzenesulfonate"
+data_india_3[94,3] <- "3,5-dichloro-2,6-dihydroxybenzoic acid"
+```
+
+
+## India
+```{r}
+data_india_filt <- merged_info[merged_info$BIOCHEMICAL %in% data_india_3$metabolites.x,]
+```
+
+```{r}
+n_not_annotated <- 108-68
+```
+```{r}
+data2 <- data_india_filt
+data3 <- data_india_filt
+```
+
+```{r}
+data4 <-data2[data2$Diet.p.value > 0.05 & data2$Genetics.p.value > 0.05 & data2$Lifestyle.p.value > 0.05 & data2$Microbiome.p.value > 0.05 & data2$Time.of.day.p.value > 0.05, ]
+```
+
+```{r}
+n_not_sign <- 27
+```
+
+
+```{r}
+data3$Diet.p.value <- ifelse(data3$Diet.p.value > 0.05, NA, data3$Diet.p.value)
+data3$Genetics.p.value <- ifelse(data3$Genetics.p.value > 0.05, NA, data3$Genetics.p.value)
+data3$Lifestyle.p.value <- ifelse(data3$Lifestyle.p.value > 0.05, NA, data3$Lifestyle.p.value)
+data3$Microbiome.p.value <- ifelse(data3$Microbiome.p.value > 0.05, NA, data3$Microbiome.p.value)
+data3$Time.of.day.p.value <- ifelse(data3$Time.of.day.p.value > 0.05, NA, data3$Time.of.day.p.value)
+```
+
+```{r}
+data3 <- select(data3, BIOCHEMICAL, Diet.p.value, Genetics.p.value, Lifestyle.p.value, Microbiome.p.value, Time.of.day.p.value)
+```
+```{r}
+cathegories <- c("Genetics",
+                 "Microbiome",
+                 "Diet",
+                 "Time of the day",
+                 "Microbiome + Diet",
+                 "Time of the day + Microbiome",
+                 "Diet + Time of the day",
+                 "Diet + Microbiome + Time of the day")
+```
+
+```{r}
+table_met <- data.frame(categories = as.vector(cathegories), n = NA)
+```
+
+```{r}
+table_met$categories <- as.vector(table_met$categories)
+```
+
+```{r}
+table_met[1, 2] <- length(which(!is.na(data3$Genetics.p.value))) 
+
+table_met[2, 2] <- length(which(is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value))) #micro
+
+table_met[3, 2] <- length(which(!is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value))) #diet
+
+table_met[4, 2] <- length(which(is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value))) #time
+
+
+table_met[5, 2] <- length(which(!is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value)))
+
+
+table_met[6, 2] <- length(which(is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value)))
+
+
+table_met[7, 2] <- length(which(!is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value)))
+
+#table_met[8, 2] <- length(which(!is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & !is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value)))
+
+#table_met[8, 2] <- length(which(!is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value)))
+```
+```{r}
+table_met[8,c(1,2)] <- c("Non significant", n_not_sign)
+table_met[9,c(1,2)] <- c("Non annotated", n_not_annotated)
+```
+
+```{r}
+table_met$n <- as.numeric(table_met$n)
+```
+
+```{r}
+library(ggplot2)
+library(viridis)
+```
+
+```{r}
+table_met <- table_met[order(table_met$n),]
+```
+
+```{r}
+sum(table_met$n)
+```
+
+```{r}
+table_met$categories <- factor(table_met$categories, levels = table_met$categories)
+```
+
+```{r}
+ggplot(table_met, aes(fill=categories, y=n, x=1, label = n)) + 
+    geom_bar(stat="identity", alpha = 0.7,  colour="black") +
+    scale_fill_viridis(discrete = T, option="magma")+
+  geom_text(size = 4, position = position_stack(vjust = 0.5))+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+ggtitle("Number of significant metabolites per category")
+
+ggsave("results/figures/barplot_India_metabolites_environment.pdf", height = 6, width = 5)
+```
+
+
+## cameroon
+```{r}
+data2 <- merged_info[merged_info$BIOCHEMICAL %in% data_cameroon$Accession,]
+```
+```{r}
+n_not_annotated <- 42-23
+```
+```{r}
+data3 <- data2
+```
+
+```{r}
+data4 <-data2[data2$Diet.p.value > 0.05 & data2$Genetics.p.value > 0.05 & data2$Lifestyle.p.value > 0.05 & data2$Microbiome.p.value > 0.05 & data2$Time.of.day.p.value > 0.05, ]
+```
+
+```{r}
+n_not_sign <- 8
+```
+
+
+```{r}
+data3$Diet.p.value <- ifelse(data3$Diet.p.value > 0.05, NA, data3$Diet.p.value)
+data3$Genetics.p.value <- ifelse(data3$Genetics.p.value > 0.05, NA, data3$Genetics.p.value)
+data3$Lifestyle.p.value <- ifelse(data3$Lifestyle.p.value > 0.05, NA, data3$Lifestyle.p.value)
+data3$Microbiome.p.value <- ifelse(data3$Microbiome.p.value > 0.05, NA, data3$Microbiome.p.value)
+data3$Time.of.day.p.value <- ifelse(data3$Time.of.day.p.value > 0.05, NA, data3$Time.of.day.p.value)
+```
+
+```{r}
+data3 <- select(data3, BIOCHEMICAL, Diet.p.value, Genetics.p.value, Lifestyle.p.value, Microbiome.p.value, Time.of.day.p.value)
+```
+```{r}
+cathegories <- c("Genetics",
+                 "Diet",
+                 "Time of the day",
+                 "Time of the day + Diet",
+                 "Genetics + Diet",
+                 "Microbiome + Diet",
+                 "Diet + Microbiome + Time of the day")
+```
+
+```{r}
+table_met <- data.frame(categories = as.vector(cathegories), n = NA)
+```
+
+```{r}
+table_met$categories <- as.vector(table_met$categories)
+```
+
+```{r}
+table_met[1, 2] <- length(which(!is.na(data3$Genetics.p.value) & is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value)))
+
+
+table_met[2, 2] <- length(which(!is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value) & is.na(data3$Genetics.p.value))) #diet
+
+
+table_met[3, 2] <- length(which(is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value) & is.na(data3$Genetics.p.value))) #time
+
+
+table_met[4, 2] <- length(which(!is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value) & is.na(data3$Genetics.p.value)))
+
+
+table_met[5, 2] <- length(which(!is.na(data3$Diet.p.value) & is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value) & !is.na(data3$Genetics.p.value)))
+
+
+table_met[6, 2] <- length(which(!is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & is.na(data3$Time.of.day.p.value) & is.na(data3$Genetics.p.value)))
+
+
+table_met[7, 2] <- length(which(!is.na(data3$Diet.p.value) & !is.na(data3$Microbiome.p.value) & is.na(data3$Lifestyle.p.value) & !is.na(data3$Time.of.day.p.value) & is.na(data3$Genetics.p.value)))
+```
+```{r}
+table_met[8, c(1,2)] <- c("Non significant", n_not_sign)
+table_met[9, c(1,2)] <- c("Non annotated", n_not_annotated)
+```
+
+```{r}
+table_met$n <- as.numeric(table_met$n)
+```
+
+```{r}
+library(ggplot2)
+library(viridis)
+```
+
+```{r}
+table_met <- table_met[order(table_met$n),]
+```
+```{r}
+table_met$categories <- factor(table_met$categories, levels = table_met$categories)
+```
+
+```{r}
+sum(table_met$n)
+```
+
+```{r}
+ggplot(table_met, aes(fill=categories, y=n, x=1, label = n)) + 
+    geom_bar(stat="identity", alpha = 0.7,  colour="black") +
+    scale_fill_viridis(discrete = T, option="cividis")+
+  geom_text(size = 4, position = position_stack(vjust = 0.5))+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+ggtitle("Number of significant metabolites per category")
+
+ggsave("results/figures/barplot_Cameroon_metabolites_environment.pdf", height = 6, width = 5)
+```
+
+

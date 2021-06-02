@@ -1,0 +1,250 @@
+---
+title: "Metabolic Enrichment analysis"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+
+## load conversion met/kegg
+
+```{r}
+conversion <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/conversion_metabolites_names_KEGG.csv")
+conversion$X <- NULL
+```
+
+```{r}
+library(MWASTools)
+```
+```{r}
+metabolites <- as.character(conversion$KEGG[!is.na(conversion$KEGG)])
+```
+
+```{r}
+list_path <- read.delim("/home/flomik/Downloads/pathway", header = FALSE)
+list_path$V2 <- gsub(".*:","",list_path$V2)
+list_path$V1 <-gsub("^........","",list_path$V1)
+```
+```{r}
+library(KEGG.db)
+```
+
+## parsing file
+```{r}
+data<- read.delim("/home/flomik/Desktop/Code-PHD/Association_analysis/br08001.keg", header = FALSE)
+data$V1 <- as.vector(data$V1)
+data$group <- substr(data$V1, 1, 1)
+data <- data[c(1:854),]
+```
+
+
+
+
+```{r}
+indice_a <- which(data$group == "A")
+indice_b <- which(data$group == "B")
+indice_c <- which(data$group == "C")
+indice_d <- which(data$group == "D")
+```
+
+
+```{r}
+sink("Metabo_KEGG.gmt")
+
+for (a in 2:(length(indice_a))){
+  path <- data[indice_a[a-1],1]
+  path <- gsub("<..>", "", path)
+  path <- gsub(".*>", "", path)
+  met <- data[indice_d[(indice_d > indice_a[a-1]) & (indice_d < indice_a[a])], 1]
+  met <- gsub("^.*   ","", met)
+  met <- gsub(" .*","",met)
+  cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+}
+path <- data[indice_a[a],1]
+path <- gsub("<..>", "", path)
+path <- gsub(".*>", "", path)
+met <- data[indice_d[(indice_d > indice_a[a])], 1]
+met <- gsub("^.*   ","", met)
+met <- gsub(" .*","",met)
+cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+
+
+for (b in 2:length(indice_b)){
+  path <- data[indice_b[b-1],1]
+  path <- gsub("\\[([^][]*)\\]", "", path)
+  path <- gsub("B ", "", path)
+  met <- data[indice_d[(indice_d > indice_b[b-1]) & (indice_d < indice_b[b])], 1]
+  met <- gsub("^.*   ","", met)
+  met <- gsub(" .*","",met)
+  cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+}
+path <- data[indice_b[b],1]
+path <- gsub("\\[([^][]*)\\]", "", path)
+path <- gsub("B ", "", path)
+met <- data[indice_d[(indice_d > indice_b[b])], 1]
+met <- gsub("^.*   ","", met)
+met <- gsub(" .*","",met)
+cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+
+for (c in 2:length(indice_c)){
+  path <- data[indice_c[c-1],1]
+  path <- gsub("C ", "", path)
+  path <- gsub("\\[([^][]*)\\]", "", path)
+  met <- data[indice_d[(indice_d > indice_c[c-1]) & (indice_d < indice_c[c])], 1]
+  met <- gsub("^.*   ","", met)
+  met <- gsub(" .*","",met)
+  cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+}
+path <- data[indice_c[c],1]
+path <- gsub("\\[([^][]*)\\]", "", path)
+path <- gsub("C ", "", path)
+met <- data[indice_d[(indice_d > indice_c[c])], 1]
+met <- gsub("^.*   ","", met)
+met <- gsub(" .*","",met)
+cat(sprintf("%s\t\t%s", path, paste(met, collapse="\t")), "\n")
+
+sink()
+```
+
+```{r}
+
+```
+
+
+
+
+```{r}
+data[1][[1]]
+```
+
+```{r}
+indice_a <- which(grepl("A",data$X.D))
+indice_b <- which(grepl("B",data$X.D))
+indice_c <- which(grepl("C",data$X.D))
+indice_d <- which(grepl("D",data$X.D))
+```
+
+```{r}
+indice_a
+```
+```{r}
+indice_d
+```
+```{r}
+for (a in indice_a) {
+  print(a)
+  
+}
+```
+
+```{r}
+list_path <- list()
+
+for(a in indice_a){
+  met = list()
+  for (d in indice_d) {
+    if(a < d){
+      path <- data$X.D[a]
+      met <- c(met,data$X.D[d])
+      line <- c(path, " ", met)
+    }
+    list_path <- c(list_path, line)
+  }
+}
+```
+
+```{r}
+sink("Metabo_KEGG.gmt")
+
+pathway.compounds = unique()
+
+for (i in pathway.compounds){
+  list_met <- table_f[table_f$Pathway == i,]
+  list_met <- list_met$Name[!is.na(list_met$Name)]
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+sink()
+```
+
+
+```{r}
+a <- MWAS_KEGG_pathways(metabolites, MWAS_matrix = NULL, file_name = "KeggPaths")
+```
+
+```{r}
+cameroon_kegg <- data.frame(a)
+```
+```{r}
+cameroon_kegg$compound_KEGG_ID <- sub(".*:", "", cameroon_kegg$compound_KEGG_ID)
+names(cameroon_kegg)[1] <- "KEGG"
+```
+```{r}
+conversion$KEGG <- gsub(",.*", "", conversion$KEGG)
+```
+```{r}
+conversion <- conversion[!is.na(conversion$KEGG),]
+conversion <- conversion[!duplicated(conversion$KEGG),]
+```
+
+```{r}
+table <- merge(conversion, cameroon_kegg, by = "KEGG", all.y = TRUE)
+table <- table[!is.na(table$pathway_name),]
+```
+```{r}
+names(table)
+```
+```{r}
+library(dplyr)
+```
+
+```{r}
+table <- select(table, pathway_name, Name, pathway_class)
+```
+
+```{r}
+table$class_1 <- gsub(";.*", "", table$pathway_class)
+table$class_1 <- ifelse(table$class_1 == "Not_determined", NA, table$class_1)
+table$class_2 <- gsub(".*; ", "", table$pathway_class)
+table$class_2 <- ifelse(table$class_2 == "Not_determined", NA, table$class_2)
+```
+
+```{r}
+table_class1 <- select(table, class_1, Name)
+names(table_class1)[1] <- "Pathway"
+table_class2 <- select(table, class_2, Name)
+names(table_class2)[1] <- "Pathway"
+table_class3 <- select(table, pathway_name, Name)
+names(table_class3)[1] <- "Pathway"
+```
+
+```{r}
+table_f <- rbind(table_class1, table_class2, table_class3)
+table_f <- table_f[!is.na(table_f),]
+table_f <- table_f[!duplicated(table_f),]
+```
+
+```{r}
+sink("Metabo_KEGG.gmt")
+
+pathway.compounds = unique(table_f$Pathway)[-245]
+
+for (i in pathway.compounds){
+  list_met <- table_f[table_f$Pathway == i,]
+  list_met <- list_met$Name[!is.na(list_met$Name)]
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+sink()
+```
+
+

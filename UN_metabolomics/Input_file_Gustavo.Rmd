@@ -1,0 +1,396 @@
+---
+title: "Metabolic Enrichment analysis"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+met_india <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/Pathway_analysis_Cameroon_India/India_metabolon_terms.csv")
+met_cam <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/Pathway_analysis_Cameroon_India/table_metabolites_terms.csv")
+```
+```{r}
+met_india_plus <- met_india[!met_india$metabolites %in% met_cam$Accession,]
+met_cam_plus <- met_cam[!met_cam$Accession %in% met_india$metabolites,]
+met_both <- met_cam[met_cam$Accession %in% met_india$metabolites,]
+```
+```{r}
+met_file <- merge(met_india, met_cam, by="metabolites", all.x = TRUE, all.y = TRUE)
+```
+
+```{r}
+met_file <- rbind(met_india_plus, met_cam_plus, met_both)
+```
+```{r}
+library(dplyr)
+met_file <-select(met_file, metabolites, ends_with(".x"))
+```
+
+
+### load pathways
+```{r}
+met <- read.csv("processing/available_ids.csv", na.strings=c("","NA"))
+
+print(c(length(which(!is.na(met$PUBCHEM))),
+        length(which(!is.na(met$CAS))),
+        length(which(!is.na(met$KEGG))),
+        length(which(!is.na(met$Group.HMDB)))))
+```
+
+
+### create gmt file
+```{r}
+sink("Metabolon.gmt")
+
+pathway.compounds = unique(met$SUPER.PATHWAY)
+
+for (i in pathway.compounds){
+  list_met <- met[met$SUPER.PATHWAY == i,]
+  list_met <- list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+subpathway.compounds = unique(met$SUB.PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- met[met$SUB.PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```
+
+```{r}
+table_ML <- data.frame()
+#table(met)
+```
+```{r}
+met_1 <-met[,c(3, 1)]
+
+
+met_2 <- met[,c(3, 2)]
+
+```
+
+```{r}
+a <- table(met_1)
+b <- table(met_2)
+```
+
+```{r}
+c <- cbind(a,b)
+```
+```{r}
+c <- data.frame(c)
+```
+
+```{r}
+c$Accession <- rownames(c)
+```
+
+```{r}
+c <- merge(c, dge, by = "Accession")
+```
+
+```{r}
+write.csv(c,"table_metabolites_terms.csv")
+```
+
+```{r}
+library(dplyr)
+```
+
+### load significant metabolites
+```{r}
+dge_table <- read.csv("results/Cameroon/Man_whithney/Cameroon_metabolon_HC_vs_ART_Man_whitney_test_results.csv")
+dge_table$Sign <- ifelse(dge_table$Log2FC > 0 , "upregulated in ART", "downregulated in ART")
+dge_table$Validation <- ifelse(dge_table$FDR < 0.1, "SIG", "NS")
+dge <- select(dge_table, Accession, Sign, Validation)
+
+
+
+dge_table <- dge_table[dge_table$FDR < 0.1,]
+dge_table <- dge_table[complete.cases(dge_table), ]
+
+dge_up <- dge_table[dge_table$Log2FC > 0, ]
+dge_up <- dge_up[complete.cases(dge_up), ]
+dge_down <- dge_table[dge_table$Log2FC < 0, ]
+dge_down <- dge_down[complete.cases(dge_down), ]
+
+
+dge_table$X <- NULL
+dge_table$Log2FC <- NULL
+dge_table$FDR <- NULL
+dge_table$Significance <- NULL
+```
+
+```{r}
+write.table(data.frame(dge_table$Accession), file = "Cameroon_all_sig_met.txt", sep = "\t",
+            row.names = FALSE)
+
+write.table(data.frame(dge_up$Accession), file = "Cameroon_met_up.txt", sep = "\t",
+            row.names = FALSE)
+
+write.table(data.frame(dge_down$Accession), file = "Cameroon_met_down.txt", sep = "\t",
+            row.names = FALSE)
+```
+
+import gseapy
+
+gseapy.enrichr(gene_list="Cameroon_met_up.txt",description='met_up',gene_sets="Metabolon.gmt",outdir='GSEA',cutoff=0.5,verbose=True, background  = 841)
+
+gseapy.enrichr(gene_list="Cameroon_met_down.txt",description='met_down',gene_sets="Metabolon.gmt",outdir='GSEA',cutoff=0.5,verbose=True, background  = 841)
+
+
+### pairwise correlation between metabolites (separatly up and down)
+
+/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/filter_metabolic_data_Cameroon.csv
+
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/filter_metabolic_data_Cameroon.csv")
+#data_sig <- data[data$X %in% dge_table$Accession, ]
+```
+
+```{r}
+data <- data[,c(1:25)]
+```
+
+```{r}
+head(data)
+```
+
+
+
+```{r}
+write.csv(data, "data_sign_HC_Cameroon.csv")
+```
+
+```{r}
+library("psych")
+library("Hmisc")
+```
+
+### correlation on ART patients for each metabolite
+```{r}
+flat_cor_mat <- function(cor_r, cor_p){
+  #This function provides a simple formatting of a correlation matrix
+  #into a table with 4 columns containing :
+    # Column 1 : row names (variable 1 for the correlation test)
+    # Column 2 : column names (variable 2 for the correlation test)
+    # Column 3 : the correlation coefficients
+    # Column 4 : the p-values of the correlations
+  library(tidyr)
+  library(tibble)
+  cor_r <- rownames_to_column(as.data.frame(cor_r), var = "row")
+  cor_r <- gather(cor_r, column, cor, -1)
+  cor_p <- rownames_to_column(as.data.frame(cor_p), var = "row")
+  cor_p <- gather(cor_p, column, p, -1)
+  cor_p_matrix <- left_join(cor_r, cor_p, by = c("row", "column"))
+  cor_p_matrix
+}
+
+cor_3 <- rcorr(t(data_sig), type = "spearman")
+
+my_cor_matrix <- flat_cor_mat(cor_3$r, cor_3$P)
+head(my_cor_matrix)
+```
+
+```{r}
+my_cor_matrix$padj <- p.adjust(my_cor_matrix$p, method = "fdr")
+```
+
+Let's add two additional columns, where we assign R=0 for those correlations that are not statistically significant (adjusted P or FDR > 0.01).
+
+
+```{r}
+my_cor_matrix$cor <- ifelse(my_cor_matrix$padj > 0.1, 0, my_cor_matrix$cor)
+my_cor_matrix <- my_cor_matrix[complete.cases(my_cor_matrix), ]
+```
+
+```{r}
+data_network <-
+```
+
+```{r}
+write.csv(my_cor_matrix, "correlation_significant_metabolites.csv")
+```
+
+## select correlation FDR < 0.1
+
+We will now build 2 different networks to analyse further:
+
+A full association network filtered using FDR-corrected P values (<0.01). This is an unweighted network. The subset of positively associated features, where correlation coefficient is used as weight. k-NNG that we will generate from the expression profile. This will be unweighted.
+
+A random network based on the Erdos-Renyi model, with the same node and edge number as the first (full) network. This will be a null-model for our analyses. The idea is that if a certain property found in one of our graphs is reproduced in a random graph, then we do not need to account for any other possible explanations for that feature. In other words, if a property of a graph (e.g. clustering) is not found in a random network, we can assume that it does not appear in our biological network due to randomness.
+
+## network Rui
+
+```{r}
+library(dplyr)
+```
+## send machine learning Gustavo
+
+### select significant metabolites
+```{r}
+dge_table_Cameroon <- read.csv("results/Cameroon/Man_whithney/Cameroon_metabolon_HC_vs_ART_Man_whitney_test_results.csv")
+dge_table_Cameroon$Sign <- ifelse(dge_table_Cameroon$Log2FC > 0 , "upregulated in ART", "downregulated in ART")
+dge_table_Cameroon$Validation <- ifelse(dge_table_Cameroon$FDR < 0.1, "SIG", "NS")
+dge_Cameroon <- select(dge_table_Cameroon, Accession, Sign, Validation)
+write.csv(dge_Cameroon, "dge_cameroon_FDR_0.1.csv")
+```
+
+```{r}
+dge_Cameroon_sig <- dge_Cameroon[dge_Cameroon$Validation == "SIG",]
+dge_Cameroon_sig <- dge_Cameroon_sig[complete.cases(dge_Cameroon_sig),]
+```
+
+### india
+```{r}
+dge_table_India <- read.csv("results/India/Man_whithney/India_HC_vs_PLHIV_Man_whitney_test_results.csv")
+names(dge_table_India)[1] <- "metabolites_2"
+```
+
+```{r}
+India_convert <- read.csv("processing/India/India_convert_met_names.csv")
+```
+```{r}
+dge_table_India <- merge(India_convert, dge_table_India, by = "metabolites_2")
+dge_table_India$Sign <- ifelse(dge_table_India$Log2FC > 0 , "upregulated in ART", "downregulated in ART")
+dge_table_India$Validation <- ifelse(dge_table_India$FDR < 0.1, "SIG", "NS")
+dge_India <- select(dge_table_India, metabolites, Sign, Validation)
+write.csv(dge_India, "dge_india_FDR_0.1.csv")
+```
+```{r}
+dge_India_sig <- dge_India[dge_India$Validation == "SIG",]
+dge_India_sig <- dge_India_sig[complete.cases(dge_India_sig),]
+```
+
+## expression data
+
+## Cameroon
+```{r}
+data <- read.csv("processing/Cameroon/filter_metabolic_data.csv")
+data_sig <- data[data$X %in% dge_Cameroon_sig$Accession, ]
+```
+
+```{r}
+write.csv(data_sig, "expression_data_Cameroon_FDR_0.1.csv")
+```
+
+```{r}
+library(xlsx)
+```
+
+## India
+
+```{r}
+data <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/India/India_filter.xlsx",1)
+data_c <- read.xlsx("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/India/India_filter.xlsx",2)
+```
+
+```{r}
+data_sig <- data[data$BIOCHEMICAL %in% dge_India_sig$metabolites, ]
+```
+
+```{r}
+write.csv(data_sig, "expression_data_India_FDR_0.1.csv")
+```
+
+
+## Other ids
+
+### Cameroon
+```{r}
+
+```
+### India
+```{r}
+
+```
+
+
+## make KEGG
+```{r}
+library(MWASTools)
+```
+
+```{r}
+met_cameroon <- met[met$BIOCHEMICAL %in% dge_Cameroon_sig$Accession,]
+```
+
+```{r}
+metabolites <- met_cameroon$KEGG
+metabolites <- as.character(metabolites)
+```
+
+```{r}
+a <- MWAS_KEGG_pathways(metabolites, MWAS_matrix = NULL, file_name = "KeggPaths")
+```
+
+```{r}
+cameroon_kegg <- data.frame(a)
+```
+
+```{r}
+cameroon_kegg$compound_KEGG_ID
+```
+
+```{r}
+sub(".*:", "", cameroon_kegg$compound_KEGG_ID)
+```
+
+```{r}
+cameroon_kegg$compound_KEGG_ID <- sub(".*:", "", cameroon_kegg$compound_KEGG_ID)
+names(cameroon_kegg)[1] <- "KEGG"
+```
+```{r}
+data_cameroon <- merge(met_cameroon, cameroon_kegg, by = "KEGG")
+```
+```{r}
+names(data_cameroon)
+```
+
+```{r}
+data_cameroon_1 <- select(data_cameroon, BIOCHEMICAL, pathway_name)
+data_cameroon_2 <- select(data_cameroon, BIOCHEMICAL, pathway_class)
+```
+
+```{r}
+table(data_cameroon_1)
+```
+
+### make input files GEM
+
+```{r}
+met_cam <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/Pathway_analysis_Cameroon_India/Cameroon/matrix_metabolites_Metabolon_terms_Cameroon.csv")
+```
+```{r}
+met_cam_kegg <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/data/Pathway_analysis_Cameroon_India/conversion_metabolites_names_KEGG.csv")
+```
+```{r}
+met_cam <- met_cam_kegg[met_cam_kegg$Name %in% met_cam$metabolites,]
+```
+```{r}
+write.csv(met_cam, "processing/input_cameroon_GEMS.csv")
+```
+```{r}
+gems <- read.csv("/home/flomik/Desktop/Code-PHD/GEM/data/metabolites_GEMS.csv")
+```
+```{r}
+m <- met_cam[met_cam$Name %in% gems$NAME,]
+```
+
+```{r}
+write.csv(m, "processing/pathways_GEMs.csv")
+```
+

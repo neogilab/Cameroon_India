@@ -1,0 +1,418 @@
+---
+title: "Proteomics"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/Proteomics_Cameroon_India/")) 
+```
+
+1) Normalization (quantile) + PCA
+2) Batch effect correction
+3) DGE (LIMMA)
+4) Venn diagram
+5) Pathway analysis
+
+```{r}
+name_ana <- "Proteomics_Cameroon_India"
+```
+
+```{r}
+library(limma)
+library(xlsx)
+library(ggplot2)
+library(circlize)
+library(umap)
+library(corrplot)
+library(dplyr)
+library(ggrepel)
+library(NormalyzerDE)
+library(biomaRt)
+source("src/usefull_functions.R")
+library(sva)
+library(colorspace)
+```
+
+c --> normal cells
+p --> cells + prostratin
+don --> impact glutaminolysis
+
+
+
+
+```{r}
+u1_c_c <- "#1B85B8"
+u1_c_p <- "#9c9799"
+u1_c_cdon <- "#054F70"
+u1_c_pdon <- "#5C5859"
+pool <- "#c3cb71"
+
+u3_c_c <- "#ae5a41"
+u3_c_p <- "#559e83"
+u3_c_cdon <- "#66372A"
+u3_c_pdon <- "#315D4C"
+
+```
+
+```{r}
+col <- c(pool, u1_c_c, u1_c_cdon, u1_c_p, u1_c_pdon, u3_c_c, u3_c_cdon, u3_c_p, u3_c_pdon)
+```
+
+
+# 1) Preprocessing
+## load data
+```{r}
+data <- read.csv("data/U1_U937_cells_all_fractions.csv", stringsAsFactors = FALSE)
+```
+```{r}
+hiv_prot <- read.csv("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/data/HIV proteins.csv")
+```
+
+## load annotation_info_file
+```{r}
+annotationInfo <- read.csv("processing/AnnotationInfoProteomics.csv")
+```
+
+
+## select abundance samples
+```{r}
+data <- data[,-c(2:12)]
+```
+```{r}
+table_names <- data.frame(names = as.vector(colnames(data)[-1]))
+table_names$condition <- gsub(".*\\.\\.","", table_names$names)
+table_names$batch <- gsub(".*\\.\\.B","B", table_names$names)
+table_names$Cell_line <- substr(table_names$batch,5,8)
+table_names$Cell_line <-gsub("\\.\\.","", table_names$Cell_line)
+table_names$batch <- gsub("\\.\\..*","", table_names$batch)
+
+table_names$condition <- paste0( table_names$Cell_line, "_",table_names$condition)
+
+table_names$condition_2 <- paste0(table_names$batch, "_", table_names$condition, "_", table_names$Cell_line)
+```
+
+```{r}
+write.csv(table_names, "processing/table_names.csv")
+```
+
+```{r}
+rownames(data) <- data$Accession
+data$Accession <- NULL
+```
+
+## select Abundances columns
+
+```{r}
+data <- data[rowSums(is.na(data)) != ncol(data),]
+data <- data.frame(Accession = rownames(data), data)
+```
+
+
+### check for missing values
+```{r}
+counts <- 1:nrow(data) # create vector of appropriate length
+for(i in 1:nrow(data)){
+    # TRUE will be coerced to 1 for the summing
+    counts[i] <- sum(is.na(data[i,]))
+}
+table(counts) # create the summary
+```
+
+```{r}
+#data_trash <- data[!complete.cases(data),]
+#data <- data[complete.cases(data),]
+data <- data[rowSums(is.na(data)) != ncol(data), ]
+#data_hiv <- data[rownames(data) %in% hiv_prot$Accession,]## remove empty lines
+
+data <- data[!is.na(data$X131..B3..Pool..Pool),]
+data <- data[!is.na(data$X131..B2..Pool..Pool),]
+data <- data[!is.na(data$X131..B1..Pool..Pool),]
+print(nrow(data))
+```
+```{r}
+data_2 <- data[!complete.cases(data),]
+#data <- data[complete.cases(data),]
+```
+
+## count number of na per condition and if NA = 3 keep 
+```{r}
+unique(table_names$condition)
+```
+
+## save files
+```{r}
+save_file_csv(data, "row_data_filt", paste0("processing/"))
+save_file_csv(table_names, "samples", paste0("processing/"))
+```
+
+
+### distribution
+```{r}
+data_2 <-as.matrix(data[,-1])
+hist(data_2 , prob=T)
+curve(dnorm(x,mean(data_2),sd(data_2)),add=T,col="red")
+save_figure(data_2, "distribution_", 10, 10)
+```
+
+
+### PCA before norm
+```{r}
+pca_data <- data.frame(group = table_names$condition, 
+                       t(as.matrix(data_2)))
+```
+
+```{r}
+pca_data[is.na(pca_data)] <-  0
+pca <- prcomp(pca_data[,-1])
+```
+
+```{r}
+df_out <- as.data.frame(pca$x)
+df_out$group <- pca_data$group
+head(df_out)
+```
+
+	
+```{r}
+df_out$group
+```
+
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, fill = as.factor(group), color = as.factor(group)))+ geom_point(size = 5, alpha = 0.9, shape = 21, color = "black")+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_fill_manual(name = "Condition", values=c(col))+theme_gray()
+
+path_fig <- paste0("results/figures/PCA_", name_ana ,"before_norm.pdf")
+dev.copy(pdf, path_fig, height = 5.7, width = 8)
+dev.off()
+```
+
+
+### Quantile normalization
+```{r}
+data[is.na(data)] <- 0
+```
+
+```{r}
+path_data <- make_data_matrix(data, name_ana)
+path_design <-make_design_matrix(data, name_ana, table_names$condition)
+outDir <- "processing/normalization"
+```
+
+```{r}
+#normalyzer(jobName=name_ana, designPath=path_design, dataPath=path_data, outputDir=outDir)
+```
+
+```{r}
+path_results_norm <- paste0("/home/flomik/Desktop/Code-PHD/Proteomics_Cameroon_India/processing/normalization/Proteomics_Cameroon_India/Quantile-normalized.txt")
+data_norm <- read.delim(path_results_norm, row.names = 1)
+rownames(data_norm) <- rownames(data)
+
+path_results <- paste0("processing/norm_files/", name_ana, "_norm_file.txt")
+
+write.table(data_norm, file = path_results, 
+            sep = "\t", row.names = TRUE, col.names = NA)
+```
+
+### PCA after normalization
+```{r}
+pca_data <- data.frame(group = table_names$condition, t(as.matrix(data_norm)))
+```
+
+```{r}
+pca_data[is.na(pca_data)] <-  0
+pca <- prcomp(pca_data[,-1])
+```
+
+```{r}
+df_out <- as.data.frame(pca$x)
+df_out$group <- pca_data$group
+head(df_out)
+```
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, fill = as.factor(group), color = as.factor(group)))+ geom_point(size = 5, alpha = 0.9, shape = 21, color = "black")+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_fill_manual(name = "Condition", values=c(col))+theme_gray()
+
+path_fig <- paste0("results/figures/PCA_", name_ana ,"after_norm.pdf")
+dev.copy(pdf, path_fig, height = 5.7, width = 8)
+dev.off()
+```
+
+### distribution after normalization
+```{r}
+#data_2 <-as.matrix(data_norm)
+#shist(data_2 , prob=T)
+#curve(dnorm(x,mean(data_2),sd(data_2)),add=T,col="red")
+#save_figure(data_2, "distribution_", 10, 10)
+```
+
+
+# normalization by quantile (limma)
+
+```{r}
+batch <- table_names$batch
+condition <- table_names$condition
+                                    
+pheno <- data.frame(Names = colnames(data_norm), Batch = batch, Condition = condition)
+
+print(pheno)
+
+# create model matrix with intercept term(whithout batch)
+modcombat2 <- model.matrix(~ condition) 
+
+# adjust batch effect (defaut parametric Bayesian adjustments)
+combat_edata <- ComBat(dat = as.matrix(data_norm), batch = batch, mod = modcombat2, 
+                      par.prior = TRUE, prior.plots = FALSE, mean.only = FALSE)
+
+combat_edata  <- data.frame(combat_edata)
+```
+
+```{r}
+path_table <- paste0("processing/", name_ana, "_data_after_batch_removal.txt")
+
+write.table(combat_edata, file =path_table, sep = "\t", row.names = TRUE, 
+            col.names = NA)
+
+```
+
+```{r}
+pca_data <- data.frame(group = condition,
+                       t(as.matrix(combat_edata)))
+```
+
+```{r}
+pca_data[is.na(pca_data)] <-  0
+pca <- prcomp(pca_data[,-1])
+```
+```{r}
+df_out <- as.data.frame(pca$x)
+df_out$group <- pca_data$group
+head(df_out)
+```
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, fill = as.factor(group), color = as.factor(group)))+ geom_point(size = 5, alpha = 0.9, shape = 21, color = "black")+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_fill_manual(name = "Condition", values=c(col))+theme_gray()
+
+path_fig <- paste0("results/figures/PCA_", name_ana ,"after_batch_correction.pdf")
+dev.copy(pdf, path_fig, height = 5.7, width = 8)
+dev.off()
+```
+```{r}
+combat_edata$X131..B1..Pool..Pool <- NULL
+combat_edata$X131..B2..Pool..Pool <- NULL
+combat_edata$X131..B3..Pool..Pool <- NULL
+```
+
+```{r}
+condition <- ifelse(condition == "U1_C", "U1_Ctrl",condition)
+condition <- ifelse(condition == "U1_P", "U1_Pros",condition)
+condition <- ifelse(condition == "U1_C.DON", "U1_CDON",condition)
+condition <- ifelse(condition == "U1_P.DON", "U1_PDON",condition)
+```
+```{r}
+condition <- ifelse(condition == "U937_C", "U9_Ctrl",condition)
+condition <- ifelse(condition == "U937_P", "U9_Pros",condition)
+condition <- ifelse(condition == "U937_C.DON", "U9_CDON",condition)
+condition <- ifelse(condition == "U937_P.DON", "U9_PDON",condition)
+```
+```{r}
+condition <- condition[condition != "Pool_Pool"]
+```
+
+```{r}
+write.csv(combat_edata,"processing/data_after_batch_correction.csv")
+```
+
+## Multiple comparisons
+
+```{r}
+table_names
+```
+
+```{r}
+treat <- gsub(".*\\_","",condition)
+cell <- gsub("\\_.*","",condition)
+cell <- factor(cell, levels = c("U1","U9"))
+p <- substring(treat,1,1)
+p <- as.factor(p)
+don <- treat
+don[grep("DON", treat)] <- "DON"
+don[don != "DON"] <- "non"
+don <- factor(don, levels = c("DON", "non"))
+```
+```{r}
+design <- model.matrix( ~ don + p + cell)
+```
+
+## set levels
+```{r}
+groups <- as.factor(condition)
+design <- model.matrix( ~ 0 + groups)
+colnames(design) <- levels(groups)
+```
+
+
+
+## fit model
+```{r}
+fit <- lmFit(combat_edata, design)
+```
+
+```{r}
+u1 <- data.frame(t(combn(unique(condition[grep("U1", condition)]), 2)))
+u1$X1 <- as.vector(u1$X1)
+u1$X2 <- as.vector(u1$X2)
+u1 <- paste0(u1$X1,"-",u1$X2)
+
+
+u9 <- data.frame(t(combn(unique(condition[grep("U9", condition)]), 2)))
+u9$X1 <- as.vector(u9$X1)
+u9$X2 <- as.vector(u9$X2)
+u9 <- paste0(u9$X1,"-",u9$X2)
+```
+
+```{r}
+list_comp <- c("U9_CDON-U1_CDON", "U9_PDON-U1_PDON", "U9_Pros-U1_Pros", "U9_Ctrl-U1_Ctrl", u1, u9)
+```
+```{r}
+names(annotationInfo)[2] <- "Accession"
+annotationInfo$X <- NULL
+```
+
+```{r}
+for(comp in list_comp){
+  c2 <- substr(comp, 1,7)[1]
+  c1 <- substr(comp, 9,16)[1]
+  dge <- extract_limma(fit, design, name_ana, c1, c2, viral_proteins)
+  print(dge)
+  top_table_up <- dge[dge$Significance_2 == "upregulated",]
+  top_table_down <- dge[dge$Significance_2 == "downregulated",]
+  print(top_table_up)
+  name_up <- paste0("results/GSEA/prot_up_regulated_", comp, ".txt")
+  name_down <- paste0("results/GSEA/prot_down_regulated_", comp, ".txt")
+  print(name_up)
+  print(name_down)
+  write.table(data.frame(top_table_up$Gene_name), file = name_up, sep = "\t",
+            row.names = FALSE)
+  write.table(data.frame(data = top_table_down$Gene_name), file = name_down, sep = "\t",
+            row.names = FALSE)
+}
+```

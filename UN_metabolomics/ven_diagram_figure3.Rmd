@@ -1,0 +1,210 @@
+---
+title: "Ven diagram Cameroon India overlap"
+output: html_notebook
+---
+
+
+```{r}
+library(eulerr)
+```
+
+```{r}
+myV <- createVennObj(nSets = 6, sNames = c("RF(IN)", "MW(IN)", "PLS-DA(IN)", "RF(CM)", "MW(CM)","PLS-DA(CM)"), sSizes = c(rep(1,74)))
+myV <- setVennRegion(myV, region = c("RF(IN)","RF(CM)"), value = 6)
+myV <- setVennRegion(myV, region = c("MW(IN)","MW(CM)"), value = 14)
+myV <- setVennRegion(myV, region = c("PLS-DA(IN)","PLS-DA(CM)"), value = 9)
+myV <- setVennRegion(myV, region = c("RF(IN)","MW(IN)", "PLS-DA(IN)"), value = 20)
+myV <- setVennRegion(myV, region = c("RF(CM)","MW(CM)", "PLS-DA(CM)"), value = 14)
+#myV <- setVennRegion(myV, region = c("RF(IN)"), value = 2) ## To change
+#myV <- setVennRegion(myV, region = c("RF(CM)"), value = 2) ## To change
+#myV <- setVennRegion(myV, region = c("MW(CM)"), value = 10)
+#myV <- setVennRegion(myV, region = c("MW(IN)"), value = 15)
+#myV <- setVennRegion(myV, region = c("PLS-DA(CM)"), value = 5)
+myV <- setVennRegion(myV, region = c("RF(IN)","MW(IN)", "PLS-DA(IN)", "RF(CM)","MW(CM)", "PLS-DA(CM)"), value = 6)
+#myV$def <- ifelse(myV$def == 1, 0, myV$def)
+
+#myV <- setVennRegion(myV, region = c("RF(IN)"), value = 1)
+#myV <- setVennRegion(myV, region = c("RF(CM)"), value = 1) ## To change 
+```
+
+```{r}
+comp <- euler(c("RF(CM)" = 1,#
+                "RF(IN)" = 1,#
+                "PLS-DA(CM)" = 5,#
+                "MW(CM)" = 10,#
+                "MW(IN)" = 66,#
+                "RF(CM)&RF(IN)" = 6,#
+                "MW(CM)&MW(IN)" = 2,#
+                "PLS-DA(CM)&PLS-DA(IN)" = 9,#
+                "PLS-DA(CM)&PLS-DA(IN)&RF(CM)&RF(IN)&MW(CM)&MW(IN)" = 6,
+                "PLS-DA(CM)&MW(CM)"=4,
+                "RF(IN)&MW(IN)"=4,
+                "RF(CM)&MW(CM)" = 8
+                ))
+```
+```{r}
+list_comp
+```
+"1"  #
+"5"  #
+"10" #
+"8"  #
+"4" #
+"6" #
+"1" #
+"66" #
+"2" #
+"2"
+"1"
+"2"
+"4"
+"1"
+"9"#
+"1"
+"11"
+"1"
+"1"
+"1"
+"6" #
+
+
+
+
+```{r}
+pdf("eurler_plot_ven_diagram.pdf")
+plot(comp,
+     quantities = list(type = c("counts")))
+dev.off()
+```
+
+plot(genes,
+     quantities = list(type = c("percent", "counts")))
+     
+
+
+```{r}
+library(nVennR)
+```
+
+```{r}
+myV <- createVennObj(nSets = 3, sNames = c("RF", "MW", "PLS-DA"), sSizes = c(rep(0,18)))
+myV <- setVennRegion(myV, region = c("RF"), value = 0)
+myV <- setVennRegion(myV, region = c("MW"), value = 7)
+myV <- setVennRegion(myV, region = c("PLS-DA"), value = 2)
+myV <- setVennRegion(myV, region = c("RF","MW"), value = 0)
+myV <- setVennRegion(myV, region = c("RF","PLS-DA"), value = 0)
+myV <- setVennRegion(myV, region = c("PLS-DA","MW"), value = 1)
+myV <- setVennRegion(myV, region = c("PLS-DA","MW","RF"), value = 6)
+```
+
+```{r}
+myV3 <- plotVenn(nVennObj = myV, nCycles = 2000,labelRegions=T, showNumbers=T, opacity=0.2, borderWidth=4, outFile="venn_figure_3.svg")
+```
+
+
+```{r}
+library(nVennR)
+myV3 <- createVennObj(nSets = 3, sSizes = c(rep(1, 8)))
+myV3 <- plotVenn(nVennObj = myV3, labelRegions=F, showNumbers=F, opacity=0.2, borderWidth=4, outFile="a.svg")
+```
+
+## upload data
+### Cameroon
+```{r}
+mw_cm <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Features/data_upset_cameroon_metabolomics_man_withney.csv", stringsAsFactors = FALSE)
+#mw_cm <- mw_cm$
+pls_cm <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Features/data_upset_cameroon_metabolomics_PLS_DA.csv", stringsAsFactors = FALSE)
+pls_cm <- pls_cm$Accession
+rf_cm <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Features/data_upset_cameroon_metabolomics_RF.csv", stringsAsFactors = FALSE)
+#rf_cm <- rf_cm$
+```
+
+```{r}
+convert <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_conversion_table_metabolomics.csv")
+names(mw_cm)[2] <- "metabolites"
+mw_cm_2 <- merge(convert, mw_cm, by = "metabolites")
+mw_cm <- as.vector(mw_cm_2$X.1)
+rf_cm_2 <- merge(convert, rf_cm, by = "metabolites")
+rf_cm <- as.vector(rf_cm_2$X.1.x)
+```
+```{r}
+write.csv(mw_cm, "/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Features/MW_vend.csv")
+write.csv(rf_cm, "/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Features/RF_vend.csv")
+```
+
+### India
+```{r}
+rf_in <- read.delim("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/India/India_metabolites_randomforest.txt", stringsAsFactors = FALSE)
+rf_in <- rf_in$x
+mw_in <- read.delim("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/India/India_metabolites_welshTtwotest.txt", stringsAsFactors = FALSE)
+mw_in <- mw_in$x
+pls_in <- read.delim("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/India/India_PLS-DA.txt", stringsAsFactors = FALSE)
+pls_in <- pls_in$x
+```
+```{r}
+rf <- rf_in[rf_in %in% rf_cm]
+pls <- pls_in[pls_in %in% pls_cm]
+mw <- mw_in[mw_in %in% mw_cm]
+```
+```{r}
+length(which(mw %in% rf))
+length(which(pls %in% rf))
+length(which(pls %in% mw))
+```
+
+```{r}
+myV3 <- createVennObj(nSets = 6, sSizes = c(rep(1, 74)))
+myV3 <- plotVenn(nVennObj = myV3, nCycles = 5000,outFile="a.svg")
+```
+
+```{r}
+myV3 <- setVennRegion(myV3, region = c("RF(CM)", "PLS-DA(CM)", "MW(CM)", "RF(IN)", "PLS-DA(IN)", "MW(IN)"), value = 6)
+```
+
+```{r}
+myV <- createVennObj(nSets = 6, sNames = c("RF(IN)", "MW(IN)", "PLS-DA(IN)", "RF(CM)", "MW(CM)","PLS-DA(CM)"), sSizes = c(rep(1,74)))
+myV <- setVennRegion(myV, region = c("RF(IN)","RF(CM)"), value = 6)
+myV <- setVennRegion(myV, region = c("MW(IN)","MW(CM)"), value = 14)
+myV <- setVennRegion(myV, region = c("PLS-DA(IN)","PLS-DA(CM)"), value = 9)
+myV <- setVennRegion(myV, region = c("RF(IN)","MW(IN)", "PLS-DA(IN)"), value = 20)
+myV <- setVennRegion(myV, region = c("RF(CM)","MW(CM)", "PLS-DA(CM)"), value = 14)
+#myV <- setVennRegion(myV, region = c("RF(IN)"), value = 2) ## To change
+#myV <- setVennRegion(myV, region = c("RF(CM)"), value = 2) ## To change
+#myV <- setVennRegion(myV, region = c("MW(CM)"), value = 10)
+#myV <- setVennRegion(myV, region = c("MW(IN)"), value = 15)
+#myV <- setVennRegion(myV, region = c("PLS-DA(CM)"), value = 5)
+myV <- setVennRegion(myV, region = c("RF(IN)","MW(IN)", "PLS-DA(IN)", "RF(CM)","MW(CM)", "PLS-DA(CM)"), value = 6)
+#myV$def <- ifelse(myV$def == 1, 0, myV$def)
+
+#myV <- setVennRegion(myV, region = c("RF(IN)"), value = 1)
+#myV <- setVennRegion(myV, region = c("RF(CM)"), value = 1) ## To change 
+```
+
+```{r}
+myV$def
+myV3 <- plotVenn(nVennObj = myV, nCycles = 3000, outFile="c.svg")
+```
+```{r}
+list_comp <- myV4$def[9:72]
+list_comp <- list_comp[list_comp!="0"]
+```
+
+## ven diagram
+```{r}
+myV4 <- plotVenn(list(a=mw_in,
+                      b=pls_in,
+                      c=rf_in,
+                      d = mw_cm,
+                      e = pls_cm,
+                      f = rf_cm),
+                 nCycles = 1,
+                 setColors=c('red', 'green', 'blue', 'orange','pink','yellow'),
+                 labelRegions=F, 
+                 fontScale=2, 
+                 opacity=0.2, 
+                 borderWidth=2,
+                 outFile="b.svg")
+```
+
+
+

@@ -1,0 +1,233 @@
+---
+title: "Parse dipeptide file output and produce Cytoscape output"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+1) separate EC/VP and EC/HC
+2) select metabolites with qvalue < 0.1 and pvalue <0.05
+3 Cytoscape input :
+Nodes :
+Node_1  Type Group_path Group_super_path
+metabolite met group_path
+path path path super_path
+superpath superpath no superpath
+
+Edges :
+Node_1 Node_2 Type
+meta   meta   meta-meta
+meta   path   path
+path   superpath super_path
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(xlsx)
+```
+
+```{r}
+name_ana <- "Cameroon_metabolon_man_withney_FDR<0.1"
+
+man_withney_table <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/results/Cameroon/Man_whithney/Cameroon_HC_vs_ART_Man_whitney_test_results.csv", stringsAsFactors = FALSE)
+man_withney_table <- man_withney_table[!is.na(man_withney_table$FDR),]
+
+man_withney_table <- man_withney_table[man_withney_table$FDR < 0.1, ]
+
+man_withney_table <- select(man_withney_table, Accession, Log2FC, FDR)
+names(man_withney_table)[1] <- "BIOCHEMICAL"
+
+pathways <- read.csv("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/Cameroon/Cameroon_metabolites_info.csv", header = TRUE, stringsAsFactors = FALSE)
+
+table <- merge(man_withney_table, pathways, by = "BIOCHEMICAL")
+table$X1 <- NULL
+```
+
+```{r}
+names(table) <- c("variable", "LogFC", "FDR", "Superpathway", "Subpathway")
+```
+
+```{r}
+anova_meta <-select(table, variable, Superpathway, Subpathway, LogFC, FDR)
+```
+
+```{r}
+anova_meta$sign <- NA
+```
+
+# attribute up or down according to logFC
+
+```{r}
+for (i in 1:nrow(anova_meta)){
+  if(anova_meta[i,4] > 0){
+    anova_meta[i,6] <- "pos"
+  }else{
+    anova_meta[i,6] <- "neg"
+  }
+}
+```
+
+#3) Build Cytoscape input
+
+Nodes :
+Node_1  Type Group_path Group_super_path
+metabolite met group_path FC pval qval sig 
+path path path super_path
+superpath superpath no superpath
+
+Edges :
+Node_1 Node_2 Type
+meta   meta   meta-meta
+meta   path   path
+path   superpath super_path
+
+
+## Metabolites
+```{r}
+table_nodes <- anova_meta
+```
+
+```{r}
+names(table_nodes)
+```
+```{r}
+names(table_nodes)[1:4] <- c("Node_1", "Grp_Super_Path", "Grp_Sub_Path", "FC")
+table_nodes$Type <-"met"
+```
+
+```{r}
+names(table_nodes)
+```
+## Sub pathways
+```{r}
+table_nodes_path <- select(table_nodes, Grp_Sub_Path, Grp_Super_Path)
+table_nodes_path <- table_nodes_path[!duplicated(table_nodes_path$Grp_Sub_Path),]
+```
+
+```{r}
+table_nodes_path <- data.frame(Node_1 = table_nodes_path$Grp_Sub_Path,
+                               Grp_Super_Path = table_nodes_path$Grp_Super_Path,
+                               Grp_Sub_Path = table_nodes_path$Grp_Sub_Path,
+                               FC = NA,
+                               FDR = NA,
+                               sign = NA,
+                               Type = "sub_path")
+```
+
+
+## Super pathways
+```{r}
+table_nodes_super_path <- table_nodes_path$Grp_Super_Path
+table_nodes_super_path <- table_nodes_super_path[!duplicated(table_nodes_super_path)]
+length(table_nodes_super_path)
+```
+
+```{r}
+table_nodes_super_path <- data.frame(Node_1 = table_nodes_super_path,
+                               Grp_Super_Path = table_nodes_super_path,
+                               Grp_Sub_Path = NA,
+                               FC = NA,
+                               FDR = NA,
+                               sign = NA,
+                               Type = "super_path")
+```
+
+```{r}
+table_genes <- table_nodes
+```
+
+## bind in one table
+
+```{r}
+table_nodes <- rbind(table_nodes, table_nodes_path, table_nodes_super_path)
+```
+
+```{r}
+path_nodes <- paste0("results/Cameroon/Metabolon/", name_ana, "_table_nodes.txt")
+write.table(table_nodes, file = path_nodes, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+Edges :
+Node_1 Node_2 Type
+meta   meta   meta-meta x
+meta   path   path
+path   superpath super_path x
+```{r}
+names(table_nodes_path)
+table_edges_path_superpath <- select(table_nodes_path, Node_1, Grp_Super_Path)
+table_edges_path_superpath$Group <- "path-super_path"
+```
+
+```{r}
+library(dplyr)
+stitch <- read.delim("/home/flomik/Desktop/Code-PHD/India_Cameroon/processing/STITCH/stitch_interactions_Cameroon_man_withney_FDR_0.1.tsv", stringsAsFactors = FALSE)
+
+stitch <- select(stitch, X.node1, node2)
+names(stitch) <-  c("Node_1", "Node_2") 
+stitch$Group <- "met-met"
+
+stitch$Node_1 <- ifelse(stitch$Node_1 == "glutamic acid", "glutamate", stitch$Node_1)
+stitch$Node_1 <- ifelse(stitch$Node_1 == "orotic acid", "orotate", stitch$Node_1)
+
+
+stitch$Node_2 <- ifelse(stitch$Node_2 == "glutamic acid", "glutamate", stitch$Node_2)
+stitch$Node_2 <- ifelse(stitch$Node_2 == "orotic acid", "orotate", stitch$Node_2)
+
+```
+
+```{r}
+names(table_nodes)
+table_edges_path_meta <- select(table_genes, Node_1, Grp_Sub_Path)
+table_edges_path_meta$Group <- "met-path"
+names(table_edges_path_meta)
+```
+
+```{r}
+names(table_edges_path_meta)[2] <-"Node_2"
+names(table_edges_path_superpath)[2]<-"Node_2"
+#names(string)
+```
+
+```{r}
+#overlap <- string[string$Node_1 %in% table_genes$Node_1,]
+#overlap <- overlap[overlap$Node_2 %in% table_genes$Node_1,]
+```
+
+```{r}
+table_edges <- rbind(table_edges_path_meta, table_edges_path_superpath, stitch)
+```
+
+```{r}
+head(table_edges)
+```
+```{r}
+head(table_nodes)
+```
+
+# save everyone
+```{r}
+path_edges <- paste0("results/Cameroon/Metabolon/", name_ana, "_table_edges.txt")
+
+write.table(table_edges, file = path_edges, sep = "\t",
+            row.names = TRUE, col.names = NA, quote = FALSE)
+```
+
+
+
+# remove double comma
+```{r}
+system("sed 's/\"//g' results/Cameroon/Metabolon/Cameroon_metabolon_man_withney_table_nodes.txt > results/Cameroon/Metabolon/Cameroon_metabolon_man_withney_table_nodes_2.txt")
+```
+
+```{r}
+system("sed 's/\"//g' results/Cameroon/Metabolon/Cameroon_metabolon_man_withney_table_edges.txt > results/Cameroon/Metabolon/Cameroon_metabolon_man_withney_table_edges_2.txt")
+```
+
+
+
+

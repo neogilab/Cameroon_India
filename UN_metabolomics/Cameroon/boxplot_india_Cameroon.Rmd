@@ -1,0 +1,120 @@
+---
+title: "Boxplots India/ Cameroon"
+output: html_notebook
+---
+
+```{r}
+library(xlsx)
+library(ggplot2)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+#library(pander)
+#library(forcats)
+```
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/India_Cameroon/")) 
+```
+
+```{r}
+cameroon <- read.csv("manuscript/biomarkers_selected_Cameroon(1).csv")
+india <- read.csv("manuscript/biomarkers_selected_India(1).csv")
+```
+
+```{r}
+data_cameroon <- read.csv("processing/data_with_clinical_data.csv")
+data_cameroon <- data_cameroon[, c(1, 250, 291, 410, 563, 565, 844:870)]
+data_cameroon$X <- NULL
+
+str(data_cameroon)
+```
+```{r}
+glimpse(data_cameroon)
+```
+
+```{r}
+cameroon <- cameroon[cameroon$X.1 %in% india$X.1,]
+india <- india[india$X.1 %in% cameroon$X.1,]
+```
+
+```{r}
+india_condition <- read.xlsx("data/India/India_filter.xlsx",2)
+```
+
+```{r}
+india_condition$Condition_2
+```
+
+
+```{r}
+india$X.2 <- NULL
+india$X.1 <- NULL
+india$X <- NULL
+rownames(india) <- india$metabolites
+india$metabolites <- NULL
+
+india <- data.frame(t(india))
+india$cohort <- "India"
+india$condition <- india_condition$Condition_2
+india$condition_2 <- paste0(india_condition$Condition_2, "_", "India")
+
+cameroon$X.2 <- NULL
+cameroon$X.1 <- NULL
+cameroon$X <- NULL
+rownames(cameroon) <- cameroon$metabolites
+cameroon$metabolites <- NULL
+cameroon <- data.frame(t(cameroon))
+cameroon$cohort <- "Cameroon"
+cameroon$condition <- c(rep("ART", 24),rep("HC", 24))
+cameroon$condition_2 <- paste0(cameroon$condition, "_", "Cameroon")
+```
+
+```{r}
+write.csv(cameroon,"processing/cameroon_data_biomarkers.csv")
+write.csv(india,"processing/india_data_biomarkers.csv")
+```
+
+
+```{r}
+data_boxplot <- rbind(india, cameroon)
+```
+
+```{r}
+
+```
+
+```{r}
+met <- c("androsterone.sulfate", "epiandrosterone.sulfate","metabolonic.lactone.sulfate","methionine.sulfone"                                 , "5alpha-androstan-3alpha,17beta-diol monosulfate (1)")
+```
+
+```{r}
+data_boxplot$condition <- ifelse(data_boxplot$condition == "HC", "a", "b")
+```
+
+
+```{r}
+library(ggpubr)
+```
+```{r}
+for (i in 1:5){
+a <- ggplot(data_boxplot, aes(condition, log2(data_boxplot[, i]), fill = condition_2)) + geom_boxplot(lwd=1.2) + theme(axis.text.x =element_text(colour="black", size = 12), axis.text.y = element_text(colour="black", size = 20))+ labs(x="Condition", y = paste0("log2(", met[i], ")"))+ 
+  facet_wrap(~cohort)+theme_grey()+
+  theme(axis.text.x = element_text(size = 20), strip.text = element_text(size=25), axis.title.x = element_text(size=25,face="bold"), axis.title.y = element_text(size=25,face="bold"))+ geom_jitter(shape=16, position=position_jitter(0.2),color = "black", size = 3)+scale_fill_manual(values=c("#0080FF","#FFB146", "#A2C0D9", "#FFE7C7"))+ # Boxplot fill color
+  scale_color_manual(values=c("#0080FF","#FFB146", "#A2C0D9", "#FFE7C7"))+ scale_x_discrete(labels=c("a" = "HC", "b" = "ART",
+                              "2" = "Dose 2"))
+ggsave(paste0("boxplots_", met[i], ".pdf"), height = 15, width = 15)
+}
+```
+
+
+
